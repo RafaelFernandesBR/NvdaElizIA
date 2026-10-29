@@ -1,0 +1,97 @@
+name: build addon
+
+on:
+  push:
+    tags: ["release-*"]
+    # To build on main/master branch, uncomment the following line:
+    # branches: [ main , master ]
+
+  pull_request:
+    branches: [ main, master ]
+
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build:
+    # Building the add-on template as an add-on does not make sense (and fails).
+    # Do not modify this repo name with your own one! (should remain the template)
+    if: github.repository != 'nvaccess/addonTemplate'
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v7
+    - name: Install uv
+      uses: astral-sh/setup-uv@v10.0.1
+      with:
+        enable-cache: true
+    - name: Install dependencies
+      run: |
+        sudo apt-get update  -y
+        sudo apt-get install -y gettext
+        uv sync
+
+    - name: Code checks
+      run: uv run prek run --all-files --skip no-commit-to-branch --skip pyright
+
+    - name: building addon
+      run: uv run scons && uv run scons pot
+
+    - uses: actions/upload-artifact@v7
+      with:
+        name: packaged_addon
+        path: |
+          ./*.nvda-addon
+        archive: false
+
+    - uses: actions/upload-artifact@v7
+      with:
+        name: translation_template
+        path: |
+          ./*.pot
+        archive: false
+
+  upload_release:
+    runs-on: ubuntu-latest
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    needs: ["build"]
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v7
+    - name: download all artifacts
+      uses: actions/download-artifact@v8
+      with:
+        path: .
+        merge-multiple: true
+    - name: Display structure of downloaded files
+      run: ls -R
+    - name: Calculate sha256
+      run: |
+        echo -e "\nSHA256: " >> changelog.md
+        sha256sum *.nvda-addon >> changelog.md
+
+    - name: Detect pre-release
+      id: release_metadata
+      env:
+        VERSION: ${{ github.ref_name }}
+      run: |
+        version="${VERSION#release-}"
+        version="${version,,}"
+        if [[ "$version" =~ (^|[0-9._-])(a|b|c|rc|alpha|beta|pre|preview|dev)($|[0-9._+-]) ]]; then
+          echo "prerelease=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "prerelease=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Release
+      uses: softprops/action-gh-release@v3
+      with:
+        files: |
+          *.nvda-addon
+          *.pot
+        body_path: changelog.md
+        fail_on_unmatched_files: true
+        prerelease: ${{ steps.release_metadata.outputs.prerelease == 'true' }}
