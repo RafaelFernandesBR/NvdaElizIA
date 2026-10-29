@@ -17,7 +17,23 @@ import time
 
 import wx
 import ui
+import addonHandler
 from . import addon_config
+from . import scheduler_store
+
+addonHandler.initTranslation()
+
+# Rótulos de exibição pra coluna "Status" da lista — os valores em si
+# (scheduler_store.STATUS_*) ficam em inglês de propósito, são dado
+# persistido no SQLite, não texto de UI; este dict é só o mapeamento na
+# hora de mostrar, com fallback pro valor cru se um status não estiver aqui.
+_STATUS_LABELS = {
+    scheduler_store.STATUS_PENDING: _("Pending"),
+    scheduler_store.STATUS_DONE: _("Done"),
+    scheduler_store.STATUS_CANCELLED: _("Cancelled"),
+    scheduler_store.STATUS_MISSED: _("Missed"),
+    scheduler_store.STATUS_FAILED: _("Failed"),
+}
 
 
 class SchedulerDialog(wx.Dialog):
@@ -34,7 +50,7 @@ class SchedulerDialog(wx.Dialog):
     """
 
     def __init__(self, parent, scheduler_store, on_run_now=None, missed_mode=False):
-        title_suffix = "Tarefas agendadas perdidas" if missed_mode else "Tarefas agendadas"
+        title_suffix = _("Missed scheduled tasks") if missed_mode else _("Scheduled tasks")
         super(SchedulerDialog, self).__init__(
             parent,
             title=f"{addon_config.ADDON_FULL_NAME} - {title_suffix}",
@@ -57,10 +73,12 @@ class SchedulerDialog(wx.Dialog):
         sizer = wx.BoxSizer(wx.VERTICAL)
 
         intro = (
-            "As tarefas abaixo estavam agendadas enquanto o NVDA estava fechado — "
-            "escolha rodar agora ou descartar cada uma:"
+            _(
+                "The tasks below were scheduled while NVDA was closed — "
+                "choose to run each one now or discard it:"
+            )
             if self.missed_mode else
-            "Tarefas agendadas:"
+            _("Scheduled tasks:")
         )
         list_label = wx.StaticText(panel, label=intro)
         sizer.Add(list_label, 0, wx.ALL, 5)
@@ -69,29 +87,31 @@ class SchedulerDialog(wx.Dialog):
             panel,
             style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.LC_VRULES,
         )
-        self.tasks_list.InsertColumn(0, "Título", width=addon_config.SCHEDULER_COLUMN_TITLE_WIDTH)
-        self.tasks_list.InsertColumn(1, "Horário", width=addon_config.SCHEDULER_COLUMN_RUN_AT_WIDTH)
-        self.tasks_list.InsertColumn(2, "Status", width=addon_config.SCHEDULER_COLUMN_STATUS_WIDTH)
+        self.tasks_list.InsertColumn(0, _("Title"), width=addon_config.SCHEDULER_COLUMN_TITLE_WIDTH)
+        # Translators: column header — the date/time the task is scheduled to run.
+        self.tasks_list.InsertColumn(1, _("Time"), width=addon_config.SCHEDULER_COLUMN_RUN_AT_WIDTH)
+        # Translators: column header — the task's current state (pending, done, etc).
+        self.tasks_list.InsertColumn(2, _("Status"), width=addon_config.SCHEDULER_COLUMN_STATUS_WIDTH)
         sizer.Add(self.tasks_list, 1, wx.EXPAND | wx.ALL, 5)
 
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         if self.missed_mode:
-            self.run_now_button = wx.Button(panel, label="&Rodar agora")
+            self.run_now_button = wx.Button(panel, label=_("&Run now"))
             self.run_now_button.SetDefault()
             button_sizer.Add(self.run_now_button, 0, wx.ALL, 5)
 
-            self.discard_button = wx.Button(panel, label="&Descartar")
+            self.discard_button = wx.Button(panel, label=_("&Discard"))
             button_sizer.Add(self.discard_button, 0, wx.ALL, 5)
         else:
-            self.cancel_task_button = wx.Button(panel, label="&Cancelar tarefa")
+            self.cancel_task_button = wx.Button(panel, label=_("Cancel tas&k"))
             self.cancel_task_button.SetDefault()
             button_sizer.Add(self.cancel_task_button, 0, wx.ALL, 5)
 
-            self.delete_button = wx.Button(panel, label="&Excluir")
+            self.delete_button = wx.Button(panel, label=_("&Delete"))
             button_sizer.Add(self.delete_button, 0, wx.ALL, 5)
 
-        self.close_button = wx.Button(panel, wx.ID_CLOSE, label="Fe&char")
+        self.close_button = wx.Button(panel, wx.ID_CLOSE, label=_("&Close"))
         button_sizer.Add(self.close_button, 0, wx.ALL, 5)
 
         sizer.Add(button_sizer, 0, wx.ALIGN_CENTER | wx.ALL, 5)
@@ -120,14 +140,14 @@ class SchedulerDialog(wx.Dialog):
             run_at_text = time.strftime(addon_config.SESSION_DATETIME_DISPLAY_FORMAT, time.localtime(task.run_at))
             index = self.tasks_list.InsertItem(self.tasks_list.GetItemCount(), task.title)
             self.tasks_list.SetItem(index, 1, run_at_text)
-            self.tasks_list.SetItem(index, 2, task.status)
+            self.tasks_list.SetItem(index, 2, _STATUS_LABELS.get(task.status, task.status))
             self.tasks_list.SetItemData(index, task.id)
 
     def _get_selected_task_id(self):
         selected = self.tasks_list.GetFirstSelected()
         if selected == -1:
             wx.MessageBox(
-                "Selecione uma tarefa na lista primeiro.", "Nenhuma tarefa selecionada", wx.OK | wx.ICON_WARNING
+                _("Select a task in the list first."), _("No task selected"), wx.OK | wx.ICON_WARNING
             )
             return None
         return self.tasks_list.GetItemData(selected)
@@ -149,7 +169,7 @@ class SchedulerDialog(wx.Dialog):
             return
         self.scheduler_store.delete_task(task_id)
         self._reload_list()
-        ui.message("Tarefa agendada descartada")
+        ui.message(_("Scheduled task discarded"))
         self.tasks_list.SetFocus()
 
     def _on_cancel_task(self, event):
@@ -158,7 +178,7 @@ class SchedulerDialog(wx.Dialog):
             return
         self.scheduler_store.cancel_task(task_id)
         self._reload_list()
-        ui.message("Tarefa agendada cancelada")
+        ui.message(_("Scheduled task cancelled"))
         self.tasks_list.SetFocus()
 
     def _on_delete(self, event):
@@ -167,7 +187,7 @@ class SchedulerDialog(wx.Dialog):
             return
         self.scheduler_store.delete_task(task_id)
         self._reload_list()
-        ui.message("Tarefa agendada excluída")
+        ui.message(_("Scheduled task deleted"))
         self.tasks_list.SetFocus()
 
     def _on_close(self, event):
@@ -203,7 +223,7 @@ class GraceCountdownDialog(wx.Dialog):
         self.label = wx.StaticText(panel, label=self._format_label())
         sizer.Add(self.label, 0, wx.ALL, 10)
 
-        self.cancel_button = wx.Button(panel, label="&Cancelar")
+        self.cancel_button = wx.Button(panel, label=_("&Cancel"))
         self.cancel_button.SetDefault()
         sizer.Add(self.cancel_button, 0, wx.ALL | wx.ALIGN_CENTER, 10)
 
@@ -223,10 +243,10 @@ class GraceCountdownDialog(wx.Dialog):
         self._timer.Start(1000)
 
     def _format_label(self):
-        return (
-            f"Tarefa agendada '{self._title}' vai começar em {self._remaining}s.\n"
-            "Pressione Cancelar (ou Esc) pra não executar agora."
-        )
+        return _(
+            "Scheduled task '%(title)s' will start in %(seconds)s seconds.\n"
+            "Press Cancel (or Esc) to not run it now."
+        ) % {"title": self._title, "seconds": self._remaining}
 
     def _on_tick(self, event):
         self._remaining -= 1

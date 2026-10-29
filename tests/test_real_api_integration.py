@@ -32,11 +32,12 @@ import types as _pytypes
 _MODEL = "gemini-2.5-flash"
 _config_stub = sys.modules["config"]
 _config_stub.conf = {
-    "operadorIA": {
+    "ElizIA": {
         "gemini_api_key": API_KEY,
         "gemini_model": _MODEL,
         "ai_temperature": 0.2,
         "api_timeout": 30,
+        "enable_shell_tool": False,
     }
 }
 

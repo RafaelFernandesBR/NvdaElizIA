@@ -9,8 +9,11 @@ import wx
 import gui
 import ui
 import config
+import addonHandler
 from . import addon_config
 from . import gemini_client
+
+addonHandler.initTranslation()
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +29,16 @@ GEMINI_MODELS = [
 ]
 
 TEMPERATURE_PRESETS = [
-	("0.0 (Deterministico)", 0.0),
-	("0.4 (Padrão)", 0.4),
-	("0.7 (Criativo)", 0.7),
-	("1.0 (Muito Criativo)", 1.0),
+	(_("0.0 (Deterministic)"), 0.0),
+	(_("0.4 (Default)"), 0.4),
+	(_("0.7 (Creative)"), 0.7),
+	(_("1.0 (Very creative)"), 1.0),
 ]
 
+# Nomes de idioma propositalmente NÃO traduzidos (_()) — convenção comum é
+# mostrar cada idioma em seu próprio nome nativo, independente do idioma da
+# UI do NVDA. Não confundir com o catálogo gettext desta UI: isto alimenta
+# response_language (idioma em que a IA responde), um sistema separado.
 LANGUAGES = [
 	("Português (Brasil)", "pt-br"),
 	("English (US)", "en"),
@@ -63,21 +70,21 @@ class SettingsPanel(gui.settingsDialogs.SettingsPanel):
 		helper = gui.guiHelper.BoxSizerHelper(self, sizer=settingsSizer)
 
 		# --- Conexão com Gemini ---
-		groupLabel = "Conexão e API"
+		groupLabel = _("Connection and API")
 		box = wx.StaticBox(self, label=groupLabel)
 		sizer = wx.StaticBoxSizer(box, wx.VERTICAL)
 
-		apiKeyLabel = wx.StaticText(box, label="Chave de API Gemini:")
+		apiKeyLabel = wx.StaticText(box, label=_("Gemini API key:"))
 		sizer.Add(apiKeyLabel, 0, wx.ALL, 5)
 		self.apiKeyCtrl = wx.TextCtrl(box, style=wx.TE_PASSWORD)
 		self.apiKeyCtrl.SetValue(self._load_config_value("gemini_api_key", ""))
 		sizer.Add(self.apiKeyCtrl, 0, wx.EXPAND | wx.ALL, 5)
 
-		self.showApiCheck = wx.CheckBox(box, label="Mostrar chave de API")
+		self.showApiCheck = wx.CheckBox(box, label=_("Show API key"))
 		self.showApiCheck.Bind(wx.EVT_CHECKBOX, self.onToggleApiVisibility)
 		sizer.Add(self.showApiCheck, 0, wx.ALL, 5)
 
-		modelLabel = wx.StaticText(box, label="Modelo Gemini:")
+		modelLabel = wx.StaticText(box, label=_("Gemini model:"))
 		sizer.Add(modelLabel, 0, wx.ALL, 5)
 		current_model = self._load_config_value("gemini_model", GEMINI_MODELS[addon_config.DEFAULT_MODEL_INDEX])
 		# Garante que o modelo salvo apareça na lista mesmo que não esteja
@@ -90,18 +97,18 @@ class SettingsPanel(gui.settingsDialogs.SettingsPanel):
 		self.modelChoice.SetSelection(initial_models.index(current_model))
 		sizer.Add(self.modelChoice, 0, wx.EXPAND | wx.ALL, 5)
 
-		self.refreshModelsBtn = wx.Button(box, label="Atualizar lista de modelos")
+		self.refreshModelsBtn = wx.Button(box, label=_("Refresh model list"))
 		self.refreshModelsBtn.Bind(wx.EVT_BUTTON, self.onRefreshModels)
 		sizer.Add(self.refreshModelsBtn, 0, wx.ALL, 5)
 
 		helper.addItem(sizer)
 
 		# --- Comportamento da IA ---
-		groupLabel = "Comportamento da IA"
+		groupLabel = _("AI behavior")
 		box = wx.StaticBox(self, label=groupLabel)
 		sizer = wx.StaticBoxSizer(box, wx.VERTICAL)
 
-		tempLabel = wx.StaticText(box, label="Temperatura (Criatividade):")
+		tempLabel = wx.StaticText(box, label=_("Temperature (Creativity):"))
 		sizer.Add(tempLabel, 0, wx.ALL, 5)
 		self.tempChoice = wx.Choice(box, choices=[x[0] for x in TEMPERATURE_PRESETS])
 		current_temp = self._load_config_value("ai_temperature", 0.4)
@@ -109,25 +116,25 @@ class SettingsPanel(gui.settingsDialogs.SettingsPanel):
 		self.tempChoice.SetSelection(selected_index if selected_index >= 0 else addon_config.DEFAULT_TEMP_INDEX)
 		sizer.Add(self.tempChoice, 0, wx.EXPAND | wx.ALL, 5)
 
-		turnsLabel = wx.StaticText(box, label="Máximo de iterações (1-50):")
+		turnsLabel = wx.StaticText(box, label=_("Maximum number of iterations (1-50):"))
 		sizer.Add(turnsLabel, 0, wx.ALL, 5)
 		self.turnsSpinCtrl = wx.SpinCtrl(box, min=1, max=50)
 		self.turnsSpinCtrl.SetValue(self._load_config_value("max_turns", addon_config.DEFAULT_MAX_TURNS))
 		sizer.Add(self.turnsSpinCtrl, 0, wx.EXPAND | wx.ALL, 5)
 
-		delayLabel = wx.StaticText(box, label="Tempo máximo de espera entre iterações (seg):")
+		delayLabel = wx.StaticText(box, label=_("Maximum wait time between iterations (sec):"))
 		sizer.Add(delayLabel, 0, wx.ALL, 5)
 		self.delaySpinCtrl = wx.SpinCtrl(box, min=1, max=10)
 		self.delaySpinCtrl.SetValue(int(self._load_config_value("turn_delay", addon_config.DEFAULT_TURN_DELAY)))
 		sizer.Add(self.delaySpinCtrl, 0, wx.EXPAND | wx.ALL, 5)
 
-		timeoutLabel = wx.StaticText(box, label="Timeout da API (seg):")
+		timeoutLabel = wx.StaticText(box, label=_("API timeout (sec):"))
 		sizer.Add(timeoutLabel, 0, wx.ALL, 5)
 		self.timeoutSpinCtrl = wx.SpinCtrl(box, min=5, max=120)
 		self.timeoutSpinCtrl.SetValue(self._load_config_value("api_timeout", addon_config.DEFAULT_API_TIMEOUT))
 		sizer.Add(self.timeoutSpinCtrl, 0, wx.EXPAND | wx.ALL, 5)
 
-		sessionsLabel = wx.StaticText(box, label="Máximo de sessões salvas (1-500):")
+		sessionsLabel = wx.StaticText(box, label=_("Maximum saved sessions (1-500):"))
 		sizer.Add(sessionsLabel, 0, wx.ALL, 5)
 		self.sessionsSpinCtrl = wx.SpinCtrl(box, min=1, max=500)
 		self.sessionsSpinCtrl.SetValue(self._load_config_value("max_sessions", addon_config.DEFAULT_MAX_SESSIONS))
@@ -136,11 +143,11 @@ class SettingsPanel(gui.settingsDialogs.SettingsPanel):
 		helper.addItem(sizer)
 
 		# --- Idioma e Localização ---
-		groupLabel = "Idioma e Localização"
+		groupLabel = _("Language and localization")
 		box = wx.StaticBox(self, label=groupLabel)
 		sizer = wx.StaticBoxSizer(box, wx.VERTICAL)
 
-		langLabel = wx.StaticText(box, label="Idioma de resposta:")
+		langLabel = wx.StaticText(box, label=_("Response language:"))
 		sizer.Add(langLabel, 0, wx.ALL, 5)
 		self.langChoice = wx.Choice(box, choices=[x[0] for x in LANGUAGES])
 		current_lang = self._load_config_value("response_language", "pt-br")
@@ -155,11 +162,11 @@ class SettingsPanel(gui.settingsDialogs.SettingsPanel):
 		helper.addItem(sizer)
 
 		# --- Agendamento e Automação ---
-		groupLabel = "Agendamento e Automação"
+		groupLabel = _("Scheduling and automation")
 		box = wx.StaticBox(self, label=groupLabel)
 		sizer = wx.StaticBoxSizer(box, wx.VERTICAL)
 
-		checkIntervalLabel = wx.StaticText(box, label="Intervalo de verificação de tarefas agendadas (5-3600 seg):")
+		checkIntervalLabel = wx.StaticText(box, label=_("Scheduled task check interval (5-3600 sec):"))
 		sizer.Add(checkIntervalLabel, 0, wx.ALL, 5)
 		self.schedulerCheckIntervalSpinCtrl = wx.SpinCtrl(box, min=5, max=3600)
 		self.schedulerCheckIntervalSpinCtrl.SetValue(
@@ -167,7 +174,7 @@ class SettingsPanel(gui.settingsDialogs.SettingsPanel):
 		)
 		sizer.Add(self.schedulerCheckIntervalSpinCtrl, 0, wx.EXPAND | wx.ALL, 5)
 
-		graceLabel = wx.StaticText(box, label="Tempo de aviso antes de rodar uma tarefa agendada (5-120 seg):")
+		graceLabel = wx.StaticText(box, label=_("Warning time before running a scheduled task (5-120 sec):"))
 		sizer.Add(graceLabel, 0, wx.ALL, 5)
 		self.schedulerGraceSpinCtrl = wx.SpinCtrl(box, min=5, max=120)
 		self.schedulerGraceSpinCtrl.SetValue(
@@ -175,7 +182,9 @@ class SettingsPanel(gui.settingsDialogs.SettingsPanel):
 		)
 		sizer.Add(self.schedulerGraceSpinCtrl, 0, wx.EXPAND | wx.ALL, 5)
 
-		askUserTimeoutLabel = wx.StaticText(box, label="Tempo máximo de espera por resposta do usuário (ask_user_tool, 10-600 seg):")
+		askUserTimeoutLabel = wx.StaticText(
+			box, label=_("Maximum wait time for a user response (ask_user_tool, 10-600 sec):")
+		)
 		sizer.Add(askUserTimeoutLabel, 0, wx.ALL, 5)
 		self.askUserTimeoutSpinCtrl = wx.SpinCtrl(box, min=10, max=600)
 		self.askUserTimeoutSpinCtrl.SetValue(
@@ -183,11 +192,11 @@ class SettingsPanel(gui.settingsDialogs.SettingsPanel):
 		)
 		sizer.Add(self.askUserTimeoutSpinCtrl, 0, wx.EXPAND | wx.ALL, 5)
 
-		self.enableShellToolCheck = wx.CheckBox(box, label="Permitir que a IA execute comandos de terminal (shell_tool)")
+		self.enableShellToolCheck = wx.CheckBox(box, label=_("Allow the AI to run terminal commands (shell_tool)"))
 		self.enableShellToolCheck.SetValue(bool(self._load_config_value("enable_shell_tool", False)))
 		sizer.Add(self.enableShellToolCheck, 0, wx.ALL, 5)
 
-		shellTimeoutLabel = wx.StaticText(box, label="Tempo máximo de execução de um comando de terminal (1-120 seg):")
+		shellTimeoutLabel = wx.StaticText(box, label=_("Maximum terminal command execution time (1-120 sec):"))
 		sizer.Add(shellTimeoutLabel, 0, wx.ALL, 5)
 		self.shellTimeoutSpinCtrl = wx.SpinCtrl(box, min=1, max=120)
 		self.shellTimeoutSpinCtrl.SetValue(
@@ -201,13 +210,13 @@ class SettingsPanel(gui.settingsDialogs.SettingsPanel):
 		api_key = self.apiKeyCtrl.GetValue().strip()
 		if not api_key:
 			gui.messageBox(
-				"Informe a chave de API antes de atualizar a lista de modelos.",
-				"Erro", wx.OK | wx.ICON_ERROR, self
+				_("Enter the API key before refreshing the model list."),
+				_("Error"), wx.OK | wx.ICON_ERROR, self
 			)
 			return
 
 		self.refreshModelsBtn.Enable(False)
-		self.refreshModelsBtn.SetLabel("Buscando modelos...")
+		self.refreshModelsBtn.SetLabel(_("Fetching models..."))
 		threading.Thread(
 			target=self._refresh_models_worker,
 			args=(api_key,),
@@ -219,7 +228,7 @@ class SettingsPanel(gui.settingsDialogs.SettingsPanel):
 			client = gemini_client.GeminiClient(api_key=api_key)
 			models = client.list_models()
 			if not models:
-				raise RuntimeError("Nenhum modelo compatível foi retornado pela API.")
+				raise RuntimeError(_("No compatible model was returned by the API."))
 			wx.CallAfter(self._apply_fetched_models, models)
 		except Exception as e:
 			wx.CallAfter(self._on_refresh_error, str(e))
@@ -231,14 +240,14 @@ class SettingsPanel(gui.settingsDialogs.SettingsPanel):
 			self.modelChoice.SetSelection(models.index(current))
 		else:
 			self.modelChoice.SetSelection(0)
-		self.refreshModelsBtn.SetLabel("Atualizar lista de modelos")
+		self.refreshModelsBtn.SetLabel(_("Refresh model list"))
 		self.refreshModelsBtn.Enable(True)
-		ui.message(f"{len(models)} modelos carregados da API")
+		ui.message(ngettext("%d model loaded from the API", "%d models loaded from the API", len(models)) % len(models))
 
 	def _on_refresh_error(self, msg):
-		self.refreshModelsBtn.SetLabel("Atualizar lista de modelos")
+		self.refreshModelsBtn.SetLabel(_("Refresh model list"))
 		self.refreshModelsBtn.Enable(True)
-		ui.message(f"Não foi possível atualizar a lista de modelos: {msg}")
+		ui.message(_("Could not refresh the model list: %s") % msg)
 
 	def onToggleApiVisibility(self, event):
 		if self.showApiCheck.Value:
@@ -250,7 +259,7 @@ class SettingsPanel(gui.settingsDialogs.SettingsPanel):
 	def onSave(self):
 		api_key = self.apiKeyCtrl.GetValue().strip()
 		if not api_key:
-			gui.messageBox("Chave de API não pode estar vazia", "Erro", wx.OK | wx.ICON_ERROR, self)
+			gui.messageBox(_("API key cannot be empty"), _("Error"), wx.OK | wx.ICON_ERROR, self)
 			return
 
 		model_idx = self.modelChoice.GetSelection()

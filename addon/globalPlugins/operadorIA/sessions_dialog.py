@@ -12,7 +12,10 @@ import time
 
 import wx
 import ui
+import addonHandler
 from . import addon_config
+
+addonHandler.initTranslation()
 
 
 class SessionsDialog(wx.Dialog):
@@ -28,7 +31,7 @@ class SessionsDialog(wx.Dialog):
     def __init__(self, parent, session_store, on_resume, on_new_session):
         super(SessionsDialog, self).__init__(
             parent,
-            title=f"{addon_config.ADDON_FULL_NAME} - Sessões salvas",
+            title=_("%s - Saved sessions") % addon_config.ADDON_FULL_NAME,
             style=wx.DEFAULT_DIALOG_STYLE | wx.RESIZE_BORDER | wx.MAXIMIZE_BOX
         )
 
@@ -47,34 +50,35 @@ class SessionsDialog(wx.Dialog):
         panel = wx.Panel(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        list_label = wx.StaticText(panel, label="Sessões salvas:")
+        list_label = wx.StaticText(panel, label=_("Saved sessions:"))
         sizer.Add(list_label, 0, wx.ALL, 5)
 
         self.sessions_list = wx.ListCtrl(
             panel,
             style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.LC_VRULES
         )
-        self.sessions_list.InsertColumn(0, "Título", width=addon_config.SESSIONS_COLUMN_TITLE_WIDTH)
-        self.sessions_list.InsertColumn(1, "Última atividade", width=addon_config.SESSIONS_COLUMN_ACTIVITY_WIDTH)
-        self.sessions_list.InsertColumn(2, "Turnos", width=addon_config.SESSIONS_COLUMN_TURNS_WIDTH)
+        self.sessions_list.InsertColumn(0, _("Title"), width=addon_config.SESSIONS_COLUMN_TITLE_WIDTH)
+        self.sessions_list.InsertColumn(1, _("Last activity"), width=addon_config.SESSIONS_COLUMN_ACTIVITY_WIDTH)
+        # Translators: column header — how many back-and-forth turns this session has.
+        self.sessions_list.InsertColumn(2, _("Turns"), width=addon_config.SESSIONS_COLUMN_TURNS_WIDTH)
         sizer.Add(self.sessions_list, 1, wx.EXPAND | wx.ALL, 5)
 
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        self.resume_button = wx.Button(panel, label="&Abrir/Retomar")
+        self.resume_button = wx.Button(panel, label=_("&Open/Resume"))
         self.resume_button.SetDefault()
         button_sizer.Add(self.resume_button, 0, wx.ALL, 5)
 
-        self.new_button = wx.Button(panel, label="&Nova sessão")
+        self.new_button = wx.Button(panel, label=_("&New session"))
         button_sizer.Add(self.new_button, 0, wx.ALL, 5)
 
-        self.rename_button = wx.Button(panel, label="&Renomear")
+        self.rename_button = wx.Button(panel, label=_("&Rename"))
         button_sizer.Add(self.rename_button, 0, wx.ALL, 5)
 
-        self.delete_button = wx.Button(panel, label="&Excluir")
+        self.delete_button = wx.Button(panel, label=_("&Delete"))
         button_sizer.Add(self.delete_button, 0, wx.ALL, 5)
 
-        self.close_button = wx.Button(panel, wx.ID_CLOSE, label="Fe&char")
+        self.close_button = wx.Button(panel, wx.ID_CLOSE, label=_("&Close"))
         button_sizer.Add(self.close_button, 0, wx.ALL, 5)
 
         sizer.Add(button_sizer, 0, wx.ALIGN_CENTER | wx.ALL, 5)
@@ -115,8 +119,8 @@ class SessionsDialog(wx.Dialog):
         selected = self.sessions_list.GetFirstSelected()
         if selected == -1:
             wx.MessageBox(
-                "Selecione uma sessão na lista primeiro.",
-                "Nenhuma sessão selecionada",
+                _("Select a session in the list first."),
+                _("No session selected"),
                 wx.OK | wx.ICON_WARNING
             )
             return None
@@ -146,7 +150,7 @@ class SessionsDialog(wx.Dialog):
             return
 
         current_title = self._get_selected_session_title()
-        dlg = wx.TextEntryDialog(self, "Novo título:", "Renomear sessão", value=current_title)
+        dlg = wx.TextEntryDialog(self, _("New title:"), _("Rename session"), value=current_title)
         if dlg.ShowModal() == wx.ID_OK:
             new_title = dlg.GetValue().strip()
             if new_title:
@@ -162,14 +166,14 @@ class SessionsDialog(wx.Dialog):
 
         title = self._get_selected_session_title()
         confirm = wx.MessageBox(
-            f"Excluir a sessão '{title}'? Esta ação não pode ser desfeita.",
-            "Confirmar exclusão",
+            _("Delete session '%s'? This action cannot be undone.") % title,
+            _("Confirm deletion"),
             wx.YES_NO | wx.ICON_WARNING
         )
         if confirm == wx.YES:
             self.session_store.delete_session(session_id)
             self._reload_list()
-            ui.message("Sessão excluída")
+            ui.message(_("Session deleted"))
         self.sessions_list.SetFocus()
 
     def _on_close(self, event):

@@ -9,8 +9,11 @@ import hashlib
 import logging
 from typing import NamedTuple, List, Optional
 
+import addonHandler
 from . import addon_config
 from . import action_tools
+
+addonHandler.initTranslation()
 
 logger = logging.getLogger(__name__)
 
@@ -208,7 +211,11 @@ class ActionProcessor:
                 continue
 
             if item.kind == "skip":
-                is_truncation = "limite de" in (item.response.get("error") or "")
+                # Marcador explícito, independente do texto traduzido de
+                # "error" (ver process_function_calls) — checar substring
+                # de uma string que passa por gettext quebraria sempre que
+                # o catálogo ativo não for o texto original.
+                is_truncation = bool(item.response.get("truncated"))
                 if item.response.get("success") is False and not is_truncation:
                     batch_aborted = True
                 continue
@@ -216,7 +223,7 @@ class ActionProcessor:
             if batch_aborted:
                 item.response = {
                     "success": False,
-                    "error": "Ignorado: lote interrompido (ação anterior falhou ou a tela mudou).",
+                    "error": _("Skipped: batch interrupted (a previous action failed or the screen changed)."),
                 }
                 continue
 
@@ -284,7 +291,7 @@ class ActionProcessor:
         """
         if not function_calls:
             logger.warning("Nenhuma function_call recebida da IA (inesperado com mode=ANY)")
-            return BatchPlan([], False, "A IA não retornou nenhuma ação válida.")
+            return BatchPlan([], False, _("The AI did not return any valid action."))
 
         support_handlers = support_handlers or {}
 
@@ -293,7 +300,7 @@ class ActionProcessor:
 
         if (done_calls or ask_user_calls) and len(function_calls) > 1:
             exclusive_name = "done_tool" if done_calls else "ask_user_tool"
-            explanation = f"{exclusive_name} não pode ser chamado junto de outra ferramenta no mesmo turno."
+            explanation = _("%s cannot be called together with another tool in the same turn.") % exclusive_name
             items = [
                 BatchItem(fc.name, fc.id, "skip", {"success": False, "error": explanation})
                 for fc in function_calls
@@ -329,7 +336,13 @@ class ActionProcessor:
             if i >= addon_config.MAX_ACTIONS_PER_TURN:
                 items.append(BatchItem(
                     call.name, call.id, "skip",
-                    {"success": False, "error": f"Ignorado: limite de {addon_config.MAX_ACTIONS_PER_TURN} ações por turno excedido."}
+                    {
+                        "success": False,
+                        "error": _("Skipped: turn action limit of %(limit)d exceeded.") % {
+                            "limit": addon_config.MAX_ACTIONS_PER_TURN,
+                        },
+                        "truncated": True,
+                    }
                 ))
                 continue
 
@@ -343,7 +356,7 @@ class ActionProcessor:
             if action_type == "support":
                 handler = support_handlers.get(call.name)
                 if handler is None:
-                    response = {"success": False, "error": "Função de apoio não disponível neste contexto."}
+                    response = {"success": False, "error": _("Support function not available in this context.")}
                 else:
                     response = handler(call.args or {})
                 items.append(BatchItem(call.name, call.id, "support", response=response))
@@ -409,15 +422,15 @@ class ActionProcessor:
     def _describe_action(action_type, args):
         """Descrição curta de fallback, usada quando a IA não manda texto junto da tool call."""
         if action_type == "keyboard":
-            return f"Enviando atalho {args.get('keys', '')}"
+            return _("Sending shortcut %s") % args.get('keys', '')
         if action_type == "type":
-            return f"Digitando: {args.get('text', '')}"
+            return _("Typing: %s") % args.get('text', '')
         if action_type == "scroll":
-            return f"Rolando para {args.get('direction', 'down')}"
+            return _("Scrolling %s") % args.get('direction', 'down')
         if action_type == "wait":
-            return "Aguardando..."
+            return _("Waiting...")
         if action_type == "launch_app":
-            return f"Abrindo {args.get('app_name', '')}"
+            return _("Opening %s") % args.get('app_name', '')
         if action_type == "shell_command":
-            return f"Comando de terminal: {args.get('reason', '')}"
-        return f"Executando {action_type}"
+            return _("Terminal command: %s") % args.get('reason', '')
+        return _("Running %s") % action_type

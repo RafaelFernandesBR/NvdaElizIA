@@ -8,9 +8,12 @@ import logging
 import threading
 from typing import List, NamedTuple, Optional
 
+import addonHandler
 import config
 from . import addon_config
 from . import action_tools
+
+addonHandler.initTranslation()
 
 try:
     import google.genai
@@ -38,20 +41,22 @@ def _describe_api_error(e):
     if isinstance(e, genai_errors.APIError):
         code = getattr(e, "code", None)
         if code in (401, 403):
-            return f"Chave de API Gemini inválida ou sem permissão (erro {code})."
+            return _("Invalid or unauthorized Gemini API key (error %(code)s).") % {"code": code}
         if code == 429:
-            return "Limite de requisições da API Gemini excedido (erro 429)."
+            return _("Gemini API request limit exceeded (error 429).")
         if code in _TRANSIENT_HTTP_CODES:
-            return (
-                f"Serviço Gemini indisponível após {addon_config.API_RETRY_ATTEMPTS} "
-                f"tentativa(s) (erro {code})."
-            )
+            return ngettext(
+                "Gemini service unavailable after %(attempts)d attempt (error %(code)s).",
+                "Gemini service unavailable after %(attempts)d attempts (error %(code)s).",
+                addon_config.API_RETRY_ATTEMPTS,
+            ) % {"attempts": addon_config.API_RETRY_ATTEMPTS, "code": code}
         return str(e)
     if isinstance(e, (httpx.TimeoutException, httpx.ConnectError)):
-        return (
-            f"Tempo esgotado ou falha de conexão com a API Gemini após "
-            f"{addon_config.API_RETRY_ATTEMPTS} tentativa(s): {e}"
-        )
+        return ngettext(
+            "Timeout or connection failure with the Gemini API after %(attempts)d attempt: %(error)s",
+            "Timeout or connection failure with the Gemini API after %(attempts)d attempts: %(error)s",
+            addon_config.API_RETRY_ATTEMPTS,
+        ) % {"attempts": addon_config.API_RETRY_ATTEMPTS, "error": e}
     return str(e)
 
 
@@ -178,7 +183,7 @@ class GeminiClient:
 
             if not response or not response.candidates:
                 logger.warning("Gemini API retornou resposta vazia (sem candidates)")
-                return TurnResult(None, None, "API não retornou resposta", None, None)
+                return TurnResult(None, None, _("API did not return a response"), None, None)
 
             candidate = response.candidates[0]
             finish_reason = getattr(candidate, "finish_reason", None)
@@ -190,7 +195,7 @@ class GeminiClient:
                 # Nenhuma function_call e nenhum texto: resposta vazia de
                 # verdade (bloqueio de safety, corte por MAX_TOKENS, etc).
                 # Nunca deve ser interpretado como "tarefa concluída".
-                error = f"Resposta vazia da IA (finish_reason={finish_reason})"
+                error = _("Empty response from the AI (finish_reason=%s)") % finish_reason
                 logger.warning(error)
 
             logger.debug(

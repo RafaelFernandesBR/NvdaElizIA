@@ -8,7 +8,10 @@ import wx
 import re
 import threading
 import ui
+import addonHandler
 from . import addon_config
+
+addonHandler.initTranslation()
 
 
 class OperatorChatDialog(wx.Dialog):
@@ -43,7 +46,7 @@ class OperatorChatDialog(wx.Dialog):
         panel = wx.Panel(self)
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        history_label = wx.StaticText(panel, label="Histórico da Conversa:")
+        history_label = wx.StaticText(panel, label=_("Conversation history:"))
         sizer.Add(history_label, 0, wx.ALL, 5)
 
         self.history_list = wx.ListCtrl(
@@ -51,12 +54,13 @@ class OperatorChatDialog(wx.Dialog):
             style=wx.LC_REPORT | wx.LC_SINGLE_SEL | wx.LC_HRULES | wx.LC_VRULES,
             size=(-1, addon_config.HISTORY_LIST_HEIGHT)
         )
-        self.history_list.InsertColumn(0, "Quem", width=addon_config.COLUMN_SENDER_WIDTH)
-        self.history_list.InsertColumn(1, "Mensagem", width=addon_config.COLUMN_MESSAGE_WIDTH)
+        # Translators: column header — who sent this chat message (the user or the add-on).
+        self.history_list.InsertColumn(0, _("Who"), width=addon_config.COLUMN_SENDER_WIDTH)
+        self.history_list.InsertColumn(1, _("Message"), width=addon_config.COLUMN_MESSAGE_WIDTH)
         self.history_list.SetFont(wx.Font(addon_config.HISTORY_LIST_FONT_SIZE, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
         sizer.Add(self.history_list, 1, wx.EXPAND | wx.ALL, 5)
 
-        input_label = wx.StaticText(panel, label="Sua pergunta ou comando:")
+        input_label = wx.StaticText(panel, label=_("Your question or command:"))
         sizer.Add(input_label, 0, wx.ALL, 5)
 
         self.input_field = wx.TextCtrl(panel, style=wx.TE_PROCESS_ENTER)
@@ -64,14 +68,14 @@ class OperatorChatDialog(wx.Dialog):
 
         button_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        self.send_button = wx.Button(panel, label="&Enviar")
+        self.send_button = wx.Button(panel, label=_("&Send"))
         self.send_button.SetDefault()
         button_sizer.Add(self.send_button, 0, wx.ALL, 5)
 
-        self.copy_button = wx.Button(panel, label="&Copiar histórico")
+        self.copy_button = wx.Button(panel, label=_("Cop&y history"))
         button_sizer.Add(self.copy_button, 0, wx.ALL, 5)
 
-        self.close_button = wx.Button(panel, wx.ID_CLOSE, label="&Fechar")
+        self.close_button = wx.Button(panel, wx.ID_CLOSE, label=_("&Close"))
         button_sizer.Add(self.close_button, 0, wx.ALL, 5)
 
         sizer.Add(button_sizer, 0, wx.ALIGN_CENTER | wx.ALL, 5)
@@ -95,13 +99,13 @@ class OperatorChatDialog(wx.Dialog):
         
         if not question:
             wx.MessageBox(
-                "Por favor, digite uma pergunta ou comando.",
-                "Campo vazio",
+                _("Please type a question or command."),
+                _("Empty field"),
                 wx.OK | wx.ICON_WARNING
             )
             return
-        
-        self.append_message("Você", question)
+
+        self.append_message(_("You"), question)
         self.input_field.Clear()
 
         self.send_button.Enable(False)
@@ -118,11 +122,11 @@ class OperatorChatDialog(wx.Dialog):
         try:
             self.callback(question)
         except ConnectionError as e:
-            wx.CallAfter(self.append_message, "Erro", f"Erro de conexão: {str(e)}")
+            wx.CallAfter(self.append_message, _("Error"), _("Connection error: %s") % str(e))
         except TimeoutError as e:
-            wx.CallAfter(self.append_message, "Erro", f"Timeout: {str(e)}")
+            wx.CallAfter(self.append_message, _("Error"), _("Timeout: %s") % str(e))
         except Exception as e:
-            wx.CallAfter(self.append_message, "Erro", f"Erro inesperado: {type(e).__name__}")
+            wx.CallAfter(self.append_message, _("Error"), _("Unexpected error: %s") % type(e).__name__)
         finally:
             wx.CallAfter(self._enable_input)
     
@@ -140,9 +144,9 @@ class OperatorChatDialog(wx.Dialog):
             if wx.TheClipboard.Open():
                 wx.TheClipboard.SetData(wx.TextDataObject(full_text))
                 wx.TheClipboard.Close()
-                ui.message("Histórico copiado")
+                ui.message(_("History copied"))
         else:
-            ui.message("Não há histórico para copiar")
+            ui.message(_("No history to copy"))
     
     def _on_close(self, event):
         self.Destroy()

@@ -85,7 +85,7 @@ def test_batch_truncated_beyond_max_actions_per_turn():
     kinds = [it.kind for it in p.items]
     assert kinds == ["execute"] * addon_config.MAX_ACTIONS_PER_TURN + ["skip"] * (5 - addon_config.MAX_ACTIONS_PER_TURN)
     for it in p.items[addon_config.MAX_ACTIONS_PER_TURN:]:
-        assert "limite de" in it.response["error"]
+        assert it.response.get("truncated") is True
     print("test_batch_truncated_beyond_max_actions_per_turn OK")
 
 

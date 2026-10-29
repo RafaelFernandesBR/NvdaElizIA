@@ -1,0 +1,710 @@
+# Portuguese (Brazil) translation for the ElizIA NVDA add-on.
+# Copyright (C) 2026 Marco Rafael
+# This file is covered by the GNU General Public License.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: 'ElizIA' '1.8.0'\n"
+"Report-Msgid-Bugs-To: 'nvda-translations@groups.io'\n"
+"POT-Creation-Date: 2026-10-29 15:51-0300\n"
+"PO-Revision-Date: 2026-10-29 00:00-0300\n"
+"Last-Translator: Marco Rafael\n"
+"Language-Team: Portuguese (Brazil)\n"
+"Language: pt_BR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: addon\globalPlugins\operadorIA\action_processor.py:226
+msgid ""
+"Skipped: batch interrupted (a previous action failed or the screen changed)."
+msgstr ""
+"Ignorado: lote interrompido (ação anterior falhou ou a tela mudou)."
+
+#: addon\globalPlugins\operadorIA\action_processor.py:294
+msgid "The AI did not return any valid action."
+msgstr "A IA não retornou nenhuma ação válida."
+
+#: addon\globalPlugins\operadorIA\action_processor.py:303
+#, python-format
+msgid "%s cannot be called together with another tool in the same turn."
+msgstr "%s não pode ser chamado junto de outra ferramenta no mesmo turno."
+
+#: addon\globalPlugins\operadorIA\action_processor.py:341
+#, python-format
+msgid "Skipped: turn action limit of %(limit)d exceeded."
+msgstr "Ignorado: limite de %(limit)d ações por turno excedido."
+
+#: addon\globalPlugins\operadorIA\action_processor.py:359
+msgid "Support function not available in this context."
+msgstr "Função de apoio não disponível neste contexto."
+
+#: addon\globalPlugins\operadorIA\action_processor.py:425
+#, python-format
+msgid "Sending shortcut %s"
+msgstr "Enviando atalho %s"
+
+#: addon\globalPlugins\operadorIA\action_processor.py:427
+#, python-format
+msgid "Typing: %s"
+msgstr "Digitando: %s"
+
+#: addon\globalPlugins\operadorIA\action_processor.py:429
+#, python-format
+msgid "Scrolling %s"
+msgstr "Rolando para %s"
+
+#: addon\globalPlugins\operadorIA\action_processor.py:431
+msgid "Waiting..."
+msgstr "Aguardando..."
+
+#: addon\globalPlugins\operadorIA\action_processor.py:433
+#, python-format
+msgid "Opening %s"
+msgstr "Abrindo %s"
+
+#: addon\globalPlugins\operadorIA\action_processor.py:435
+#, python-format
+msgid "Terminal command: %s"
+msgstr "Comando de terminal: %s"
+
+#: addon\globalPlugins\operadorIA\action_processor.py:436
+#, python-format
+msgid "Running %s"
+msgstr "Executando %s"
+
+#: addon\globalPlugins\operadorIA\action_tools.py:315
+#, python-format
+msgid "Unknown tool: %(tool_name)r"
+msgstr "Ferramenta desconhecida: %(tool_name)r"
+
+#: addon\globalPlugins\operadorIA\action_tools.py:319
+#, python-format
+msgid "Missing required parameter(s) for %(tool_name)s: %(missing)s"
+msgstr "Parâmetro(s) obrigatório(s) faltando para %(tool_name)s: %(missing)s"
+
+#: addon\globalPlugins\operadorIA\action_tools.py:325
+#, python-format
+msgid ""
+"Invalid direction for scroll_tool: %(direction)r (expected 'up' or 'down')"
+msgstr ""
+"direction inválido para scroll_tool: %(direction)r (esperado 'up' ou "
+"'down')"
+
+#: addon\globalPlugins\operadorIA\action_tools.py:338
+#, python-format
+msgid ""
+"Invalid run_at for schedule_task_tool: %(run_at)r (expected ISO 8601 'YYYY-"
+"MM-DDTHH:MM:SS')"
+msgstr ""
+"run_at inválido para schedule_task_tool: %(run_at)r (esperado ISO 8601 "
+"'AAAA-MM-DDTHH:MM:SS')"
+
+#: addon\globalPlugins\operadorIA\action_tools.py:342
+#, python-format
+msgid ""
+"run_at must be in the future, received %(run_at)r which has already passed "
+"(or is now)."
+msgstr ""
+"run_at precisa ser no futuro, recebido %(run_at)r que já passou (ou é "
+"agora)."
+
+#: addon\globalPlugins\operadorIA\chat_dialog.py:49
+msgid "Conversation history:"
+msgstr "Histórico da Conversa:"
+
+#. Translators: column header — who sent this chat message (the user or the add-on).
+#: addon\globalPlugins\operadorIA\chat_dialog.py:58
+msgid "Who"
+msgstr "Quem"
+
+#: addon\globalPlugins\operadorIA\chat_dialog.py:58
+msgid "Message"
+msgstr "Mensagem"
+
+#: addon\globalPlugins\operadorIA\chat_dialog.py:62
+msgid "Your question or command:"
+msgstr "Sua pergunta ou comando:"
+
+#: addon\globalPlugins\operadorIA\chat_dialog.py:70
+msgid "&Send"
+msgstr "&Enviar"
+
+#: addon\globalPlugins\operadorIA\chat_dialog.py:74
+msgid "Cop&y history"
+msgstr "&Copiar histórico"
+
+#: addon\globalPlugins\operadorIA\chat_dialog.py:77
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:113
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:80
+msgid "&Close"
+msgstr "&Fechar"
+
+#: addon\globalPlugins\operadorIA\chat_dialog.py:101
+msgid "Please type a question or command."
+msgstr "Por favor, digite uma pergunta ou comando."
+
+#: addon\globalPlugins\operadorIA\chat_dialog.py:102
+msgid "Empty field"
+msgstr "Campo vazio"
+
+#: addon\globalPlugins\operadorIA\chat_dialog.py:107
+#: addon\globalPlugins\operadorIA\__init__.py:823
+#: addon\globalPlugins\operadorIA\__init__.py:1031
+msgid "You"
+msgstr "Você"
+
+#: addon\globalPlugins\operadorIA\chat_dialog.py:124
+#: addon\globalPlugins\operadorIA\chat_dialog.py:126
+#: addon\globalPlugins\operadorIA\chat_dialog.py:128
+#: addon\globalPlugins\operadorIA\settings.py:214
+#: addon\globalPlugins\operadorIA\settings.py:262
+msgid "Error"
+msgstr "Erro"
+
+#: addon\globalPlugins\operadorIA\chat_dialog.py:124
+#, python-format
+msgid "Connection error: %s"
+msgstr "Erro de conexão: %s"
+
+#: addon\globalPlugins\operadorIA\chat_dialog.py:126
+#, python-format
+msgid "Timeout: %s"
+msgstr "Timeout: %s"
+
+#: addon\globalPlugins\operadorIA\chat_dialog.py:128
+#, python-format
+msgid "Unexpected error: %s"
+msgstr "Erro inesperado: %s"
+
+#: addon\globalPlugins\operadorIA\chat_dialog.py:146
+msgid "History copied"
+msgstr "Histórico copiado"
+
+#: addon\globalPlugins\operadorIA\chat_dialog.py:148
+msgid "No history to copy"
+msgstr "Não há histórico para copiar"
+
+#: addon\globalPlugins\operadorIA\gemini_client.py:44
+#, python-format
+msgid "Invalid or unauthorized Gemini API key (error %(code)s)."
+msgstr "Chave de API Gemini inválida ou sem permissão (erro %(code)s)."
+
+#: addon\globalPlugins\operadorIA\gemini_client.py:46
+msgid "Gemini API request limit exceeded (error 429)."
+msgstr "Limite de requisições da API Gemini excedido (erro 429)."
+
+#: addon\globalPlugins\operadorIA\gemini_client.py:49
+#, python-format
+msgid "Gemini service unavailable after %(attempts)d attempt (error %(code)s)."
+msgid_plural ""
+"Gemini service unavailable after %(attempts)d attempts (error %(code)s)."
+msgstr[0] "Serviço Gemini indisponível após %(attempts)d tentativa (erro %(code)s)."
+msgstr[1] "Serviço Gemini indisponível após %(attempts)d tentativas (erro %(code)s)."
+
+#: addon\globalPlugins\operadorIA\gemini_client.py:56
+#, python-format
+msgid ""
+"Timeout or connection failure with the Gemini API after %(attempts)d "
+"attempt: %(error)s"
+msgid_plural ""
+"Timeout or connection failure with the Gemini API after %(attempts)d "
+"attempts: %(error)s"
+msgstr[0] ""
+"Tempo esgotado ou falha de conexão com a API Gemini após %(attempts)d "
+"tentativa: %(error)s"
+msgstr[1] ""
+"Tempo esgotado ou falha de conexão com a API Gemini após %(attempts)d "
+"tentativas: %(error)s"
+
+#: addon\globalPlugins\operadorIA\gemini_client.py:186
+msgid "API did not return a response"
+msgstr "API não retornou resposta"
+
+#: addon\globalPlugins\operadorIA\gemini_client.py:198
+#, python-format
+msgid "Empty response from the AI (finish_reason=%s)"
+msgstr "Resposta vazia da IA (finish_reason=%s)"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:32
+msgid "Pending"
+msgstr "Pendente"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:33
+msgid "Done"
+msgstr "Concluída"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:34
+msgid "Cancelled"
+msgstr "Cancelada"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:35
+msgid "Missed"
+msgstr "Perdida"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:36
+msgid "Failed"
+msgstr "Falhou"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:54
+msgid "Missed scheduled tasks"
+msgstr "Tarefas agendadas perdidas"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:54
+msgid "Scheduled tasks"
+msgstr "Tarefas agendadas"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:78
+msgid ""
+"The tasks below were scheduled while NVDA was closed — choose to run each "
+"one now or discard it:"
+msgstr ""
+"As tarefas abaixo estavam agendadas enquanto o NVDA estava fechado — "
+"escolha rodar agora ou descartar cada uma:"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:82
+msgid "Scheduled tasks:"
+msgstr "Tarefas agendadas:"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:91
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:60
+msgid "Title"
+msgstr "Título"
+
+#. Translators: column header — the date/time the task is scheduled to run.
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:92
+msgid "Time"
+msgstr "Horário"
+
+#. Translators: column header — the task's current state (pending, done, etc).
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:94
+msgid "Status"
+msgstr "Status"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:99
+msgid "&Run now"
+msgstr "&Rodar agora"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:103
+msgid "&Discard"
+msgstr "&Descartar"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:106
+msgid "Cancel tas&k"
+msgstr "&Cancelar tarefa"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:110
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:77
+msgid "&Delete"
+msgstr "&Excluir"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:149
+msgid "Select a task in the list first."
+msgstr "Selecione uma tarefa na lista primeiro."
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:149
+msgid "No task selected"
+msgstr "Nenhuma tarefa selecionada"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:171
+msgid "Scheduled task discarded"
+msgstr "Tarefa agendada descartada"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:180
+msgid "Scheduled task cancelled"
+msgstr "Tarefa agendada cancelada"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:189
+msgid "Scheduled task deleted"
+msgstr "Tarefa agendada excluída"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:225
+msgid "&Cancel"
+msgstr "&Cancelar"
+
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:246
+#, python-format
+msgid ""
+"Scheduled task '%(title)s' will start in %(seconds)s seconds.\n"
+"Press Cancel (or Esc) to not run it now."
+msgstr ""
+"Tarefa agendada '%(title)s' vai começar em %(seconds)s segundos.\n"
+"Pressione Cancelar (ou Esc) pra não executar agora."
+
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:34
+#, python-format
+msgid "%s - Saved sessions"
+msgstr "%s - Sessões salvas"
+
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:53
+msgid "Saved sessions:"
+msgstr "Sessões salvas:"
+
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:61
+msgid "Last activity"
+msgstr "Última atividade"
+
+#. Translators: column header — how many back-and-forth turns this session has.
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:63
+msgid "Turns"
+msgstr "Turnos"
+
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:67
+msgid "&Open/Resume"
+msgstr "&Abrir/Retomar"
+
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:71
+msgid "&New session"
+msgstr "&Nova sessão"
+
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:74
+msgid "&Rename"
+msgstr "&Renomear"
+
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:121
+msgid "Select a session in the list first."
+msgstr "Selecione uma sessão na lista primeiro."
+
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:122
+msgid "No session selected"
+msgstr "Nenhuma sessão selecionada"
+
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:152
+msgid "New title:"
+msgstr "Novo título:"
+
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:152
+msgid "Rename session"
+msgstr "Renomear sessão"
+
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:168
+#, python-format
+msgid "Delete session '%s'? This action cannot be undone."
+msgstr "Excluir a sessão '%s'? Esta ação não pode ser desfeita."
+
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:169
+msgid "Confirm deletion"
+msgstr "Confirmar exclusão"
+
+#: addon\globalPlugins\operadorIA\sessions_dialog.py:175
+msgid "Session deleted"
+msgstr "Sessão excluída"
+
+#: addon\globalPlugins\operadorIA\settings.py:32
+msgid "0.0 (Deterministic)"
+msgstr "0.0 (Deterministico)"
+
+#: addon\globalPlugins\operadorIA\settings.py:33
+msgid "0.4 (Default)"
+msgstr "0.4 (Padrão)"
+
+#: addon\globalPlugins\operadorIA\settings.py:34
+msgid "0.7 (Creative)"
+msgstr "0.7 (Criativo)"
+
+#: addon\globalPlugins\operadorIA\settings.py:35
+msgid "1.0 (Very creative)"
+msgstr "1.0 (Muito Criativo)"
+
+#: addon\globalPlugins\operadorIA\settings.py:73
+msgid "Connection and API"
+msgstr "Conexão e API"
+
+#: addon\globalPlugins\operadorIA\settings.py:77
+msgid "Gemini API key:"
+msgstr "Chave de API Gemini:"
+
+#: addon\globalPlugins\operadorIA\settings.py:83
+msgid "Show API key"
+msgstr "Mostrar chave de API"
+
+#: addon\globalPlugins\operadorIA\settings.py:87
+msgid "Gemini model:"
+msgstr "Modelo Gemini:"
+
+#: addon\globalPlugins\operadorIA\settings.py:100
+#: addon\globalPlugins\operadorIA\settings.py:243
+#: addon\globalPlugins\operadorIA\settings.py:248
+msgid "Refresh model list"
+msgstr "Atualizar lista de modelos"
+
+#: addon\globalPlugins\operadorIA\settings.py:107
+msgid "AI behavior"
+msgstr "Comportamento da IA"
+
+#: addon\globalPlugins\operadorIA\settings.py:111
+msgid "Temperature (Creativity):"
+msgstr "Temperatura (Criatividade):"
+
+#: addon\globalPlugins\operadorIA\settings.py:119
+msgid "Maximum number of iterations (1-50):"
+msgstr "Máximo de iterações (1-50):"
+
+#: addon\globalPlugins\operadorIA\settings.py:125
+msgid "Maximum wait time between iterations (sec):"
+msgstr "Tempo máximo de espera entre iterações (seg):"
+
+#: addon\globalPlugins\operadorIA\settings.py:131
+msgid "API timeout (sec):"
+msgstr "Timeout da API (seg):"
+
+#: addon\globalPlugins\operadorIA\settings.py:137
+msgid "Maximum saved sessions (1-500):"
+msgstr "Máximo de sessões salvas (1-500):"
+
+#: addon\globalPlugins\operadorIA\settings.py:146
+msgid "Language and localization"
+msgstr "Idioma e Localização"
+
+#: addon\globalPlugins\operadorIA\settings.py:150
+msgid "Response language:"
+msgstr "Idioma de resposta:"
+
+#: addon\globalPlugins\operadorIA\settings.py:165
+msgid "Scheduling and automation"
+msgstr "Agendamento e Automação"
+
+#: addon\globalPlugins\operadorIA\settings.py:169
+msgid "Scheduled task check interval (5-3600 sec):"
+msgstr "Intervalo de verificação de tarefas agendadas (5-3600 seg):"
+
+#: addon\globalPlugins\operadorIA\settings.py:177
+msgid "Warning time before running a scheduled task (5-120 sec):"
+msgstr "Tempo de aviso antes de rodar uma tarefa agendada (5-120 seg):"
+
+#: addon\globalPlugins\operadorIA\settings.py:186
+msgid "Maximum wait time for a user response (ask_user_tool, 10-600 sec):"
+msgstr "Tempo máximo de espera por resposta do usuário (ask_user_tool, 10-600 seg):"
+
+#: addon\globalPlugins\operadorIA\settings.py:195
+msgid "Allow the AI to run terminal commands (shell_tool)"
+msgstr "Permitir que a IA execute comandos de terminal (shell_tool)"
+
+#: addon\globalPlugins\operadorIA\settings.py:199
+msgid "Maximum terminal command execution time (1-120 sec):"
+msgstr "Tempo máximo de execução de um comando de terminal (1-120 seg):"
+
+#: addon\globalPlugins\operadorIA\settings.py:213
+msgid "Enter the API key before refreshing the model list."
+msgstr "Informe a chave de API antes de atualizar a lista de modelos."
+
+#: addon\globalPlugins\operadorIA\settings.py:219
+msgid "Fetching models..."
+msgstr "Buscando modelos..."
+
+#: addon\globalPlugins\operadorIA\settings.py:231
+msgid "No compatible model was returned by the API."
+msgstr "Nenhum modelo compatível foi retornado pela API."
+
+#: addon\globalPlugins\operadorIA\settings.py:245
+#, python-format
+msgid "%d model loaded from the API"
+msgid_plural "%d models loaded from the API"
+msgstr[0] "%d modelo carregado da API"
+msgstr[1] "%d modelos carregados da API"
+
+#: addon\globalPlugins\operadorIA\settings.py:250
+#, python-format
+msgid "Could not refresh the model list: %s"
+msgstr "Não foi possível atualizar a lista de modelos: %s"
+
+#: addon\globalPlugins\operadorIA\settings.py:262
+msgid "API key cannot be empty"
+msgstr "Chave de API não pode estar vazia"
+
+#: addon\globalPlugins\operadorIA\__init__.py:253
+#: addon\globalPlugins\operadorIA\__init__.py:260
+#: addon\globalPlugins\operadorIA\__init__.py:309
+#: addon\globalPlugins\operadorIA\__init__.py:388
+#: addon\globalPlugins\operadorIA\__init__.py:474
+#: addon\globalPlugins\operadorIA\__init__.py:1049
+#, python-format
+msgid "%s is already running"
+msgstr "%s já está em execução"
+
+#: addon\globalPlugins\operadorIA\__init__.py:256
+#, python-format
+msgid "Starts %s to control Windows"
+msgstr "Inicia o %s para controlar o Windows"
+
+#: addon\globalPlugins\operadorIA\__init__.py:263
+msgid "Session management is not available."
+msgstr "Gerenciamento de sessões não está disponível."
+
+#: addon\globalPlugins\operadorIA\__init__.py:273
+#, python-format
+msgid "Opens the list of saved sessions of %s"
+msgstr "Abre a lista de sessões salvas do %s"
+
+#: addon\globalPlugins\operadorIA\__init__.py:277
+msgid "Task scheduling is not available."
+msgstr "Agendamento de tarefas não está disponível."
+
+#: addon\globalPlugins\operadorIA\__init__.py:287
+#, python-format
+msgid "Opens the list of scheduled tasks of %s"
+msgstr "Abre a lista de tarefas agendadas do %s"
+
+#: addon\globalPlugins\operadorIA\__init__.py:298
+msgid "What do you want me to do?"
+msgstr "O que você quer que eu faça?"
+
+#: addon\globalPlugins\operadorIA\__init__.py:311
+#: addon\globalPlugins\operadorIA\__init__.py:1056
+msgid "Processing..."
+msgstr "Processando..."
+
+#: addon\globalPlugins\operadorIA\__init__.py:395
+msgid "Session not found (it may have been deleted)."
+msgstr "Sessão não encontrada (pode ter sido excluída)."
+
+#: addon\globalPlugins\operadorIA\__init__.py:422
+#: addon\globalPlugins\operadorIA\__init__.py:1020
+#, python-format
+msgid "%s - Chat"
+msgstr "%s - Chat"
+
+#: addon\globalPlugins\operadorIA\__init__.py:431
+#, python-format
+msgid "Session '%s' resumed. What do you want to do now?"
+msgstr "Sessão '%s' retomada. O que você quer fazer agora?"
+
+#: addon\globalPlugins\operadorIA\__init__.py:461
+#, python-format
+msgid "%d scheduled task missed while NVDA was closed."
+msgid_plural "%d scheduled tasks missed while NVDA was closed."
+msgstr[0] "%d tarefa agendada venceu enquanto o NVDA estava fechado."
+msgstr[1] "%d tarefas agendadas venceram enquanto o NVDA estava fechado."
+
+#: addon\globalPlugins\operadorIA\__init__.py:505
+#, python-format
+msgid "Scheduled task '%s' cancelled."
+msgstr "Tarefa agendada '%s' cancelada."
+
+#: addon\globalPlugins\operadorIA\__init__.py:540
+#, python-format
+msgid ""
+"Scheduled task '%(title)s' will start in %(seconds)s seconds. Press Cancel "
+"or Esc in the window that opened to not run it now."
+msgstr ""
+"Tarefa agendada '%(title)s' vai começar em %(seconds)s segundos. Pressione "
+"Cancelar ou Esc na janela que abriu pra não executar agora."
+
+#: addon\globalPlugins\operadorIA\__init__.py:585
+#, python-format
+msgid "Invalid run_at: %s"
+msgstr "run_at inválido: %s"
+
+#: addon\globalPlugins\operadorIA\__init__.py:593
+#, python-format
+msgid "Scheduled task created (id=%s)."
+msgstr "Tarefa agendada (id=%s)."
+
+#: addon\globalPlugins\operadorIA\__init__.py:610
+#, python-format
+msgid "Task %s cancelled."
+msgstr "Tarefa %s cancelada."
+
+#: addon\globalPlugins\operadorIA\__init__.py:611
+#, python-format
+msgid "Task %s not found or no longer pending."
+msgstr "Tarefa %s não encontrada ou já não está pendente."
+
+#: addon\globalPlugins\operadorIA\__init__.py:621
+#, python-format
+msgid "The AI is asking: %s"
+msgstr "A IA está perguntando: %s"
+
+#: addon\globalPlugins\operadorIA\__init__.py:662
+#, python-format
+msgid ""
+"The AI wants to run the following command in the terminal:\n"
+"\n"
+"%(command)s\n"
+"\n"
+"Reason: %(reason)s\n"
+"\n"
+"Allow?"
+msgstr ""
+"A IA quer executar o seguinte comando no terminal:\n"
+"\n"
+"%(command)s\n"
+"\n"
+"Motivo: %(reason)s\n"
+"\n"
+"Permitir?"
+
+#: addon\globalPlugins\operadorIA\__init__.py:678
+#, python-format
+msgid ""
+"The AI wants to run a terminal command: %s. Confirm in the window that "
+"opened."
+msgstr ""
+"A IA quer executar um comando no terminal: %s. Confirme na janela que "
+"abriu."
+
+#: addon\globalPlugins\operadorIA\__init__.py:693
+msgid "The AI is taking a while to respond, please wait..."
+msgstr "A IA está demorando a responder, aguarde..."
+
+#: addon\globalPlugins\operadorIA\__init__.py:785
+#, python-format
+msgid ""
+"NVDA's screen curtain is active, so the screen cannot be seen. Disable the "
+"screen curtain (Vision category, in NVDA settings) before using %s."
+msgstr ""
+"A cortina de tela do NVDA está ativa, então não é possível ver a tela. "
+"Desative a cortina de tela (categoria Visão, nas configurações do NVDA) "
+"antes de usar o %s."
+
+#: addon\globalPlugins\operadorIA\__init__.py:790
+msgid "Screen curtain is active."
+msgstr "Cortina de tela ativa."
+
+#: addon\globalPlugins\operadorIA\__init__.py:797
+#, python-format
+msgid "Set the Gemini API key in the NVDA settings panel before using %s."
+msgstr "Configure a chave da API Gemini no painel de configurações do NVDA antes de usar o %s."
+
+#: addon\globalPlugins\operadorIA\__init__.py:799
+msgid "Gemini API key not configured."
+msgstr "Chave de API Gemini não configurada."
+
+#: addon\globalPlugins\operadorIA\__init__.py:808
+#, python-format
+msgid "Error connecting to the Gemini API: %s"
+msgstr "Erro ao conectar à API Gemini: %s"
+
+#: addon\globalPlugins\operadorIA\__init__.py:860
+msgid "Error capturing the screen"
+msgstr "Erro ao capturar tela"
+
+#: addon\globalPlugins\operadorIA\__init__.py:918
+msgid "I stopped the automation: no response from the user to the question."
+msgstr "Parei a automação: sem resposta do usuário à pergunta."
+
+#: addon\globalPlugins\operadorIA\__init__.py:942
+msgid ""
+"I stopped the automation: the same action repeated without the screen "
+"changing."
+msgstr "Parei a automação: a mesma ação se repetiu sem a tela mudar."
+
+#: addon\globalPlugins\operadorIA\__init__.py:956
+#, python-format
+msgid "Did not complete: %s"
+msgstr "Não concluí: %s"
+
+#: addon\globalPlugins\operadorIA\__init__.py:957
+msgid "I could not complete the task."
+msgstr "Não consegui concluir a tarefa."
+
+#: addon\globalPlugins\operadorIA\__init__.py:980
+msgid "Operation completed."
+msgstr "Operação concluída."
+
+#: addon\globalPlugins\operadorIA\__init__.py:987
+#: addon\globalPlugins\operadorIA\__init__.py:1061
+#, python-format
+msgid "Error: %s"
+msgstr "Erro: %s"

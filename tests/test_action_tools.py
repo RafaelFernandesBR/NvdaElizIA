@@ -81,7 +81,7 @@ def test_validate_args_schedule_task_rejects_past_run_at():
     err = action_tools.validate_args(
         "schedule_task_tool", {"command": "x", "title": "X", "run_at": "2000-01-01T00:00:00"}
     )
-    assert err and "futuro" in err
+    assert err and "future" in err
     print("test_validate_args_schedule_task_rejects_past_run_at OK")
 
 

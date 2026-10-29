@@ -59,6 +59,7 @@ addon/
         ├── anyio/                  # Async I/O library
         ├── pydantic/               # Data validation
         └── ... (outras libs de suporte)
+addon/locale/pt_BR/LC_MESSAGES/nvda.po  # Catálogo de tradução pt-BR (ver "Tradução (i18n)" abaixo)
 ARCHITECTURE.md                     # Detalhamento técnico do pipeline de IA e gestão de contexto
 tests/                              # Testes standalone (sem NVDA, sem pytest) — ver tests/README.md
 ```
@@ -125,6 +126,62 @@ Detalhamento de cada um (com trechos de código e o raciocínio por trás) está
 - **Nunca** deixe uma ação desconhecida/mal validada cair num comportamento padrão silencioso (ex: "virar clique") — para um usuário cego, nenhuma ação é mais seguro que uma ação errada. Sempre recuse explicitamente (`validate_args`) e devolva o erro pra IA tentar de novo.
 - **Testes** — ver [`tests/README.md`](tests/README.md) e a seção "Como testar" do [ARCHITECTURE.md](ARCHITECTURE.md#como-testar-sem-o-nvda-rodando). A maior parte da lógica (tools, planejamento/execução de lote, histórico, downscale) tem teste standalone; só mouse/teclado/clipboard reais e o loop fim-a-fim exigem o NVDA rodando.
 - **Investigação do comportamento do NVDA** — durante a etapa de investigação, se for preciso saber como o NVDA faz algo internamente, ou se existe alguma função/API exposta pelo NVDA para uso em addons, consultar o código-fonte do NVDA em `D:\repo\nvda` (clone local do repositório oficial) em vez de supor ou confiar só em memória/documentação externa.
+
+## Tradução (i18n)
+
+O addon usa a convenção oficial do NVDA para tradução: `addonHandler.initTranslation()` no
+topo de cada módulo que tenha strings visíveis ao usuário, injetando `_`/`ngettext`/`pgettext`/
+`npgettext` como globals **daquele módulo** (não globalmente — cada módulo chama de novo). A
+infra de build (SCons) já vinha pronta do template (`site_scons/site_tools/gettexttool/`, alias
+`pot`, builders `gettextMoFile`/`NVDATranslatedManifest`) — só faltava usá-la.
+
+- **Convenção de idioma** — os literais no código são em **inglês** (msgid), convenção gettext
+  padrão, não em português (apesar de ser o idioma nativo do autor e o `baseLanguage` de
+  `buildVars.py`, que é um sistema separado — ver abaixo). A tradução pra português mora em
+  `addon/locale/pt_BR/LC_MESSAGES/nvda.po`, mantida à mão (sem Crowdin configurado ainda, apesar
+  do grupo de dependências `l10n` no `pyproject.toml` já prever isso).
+- **Módulos com `addonHandler.initTranslation()`** (têm string de UI real): `__init__.py`,
+  `action_tools.py` (só as mensagens de erro de `validate_args()`, não as descrições de tool
+  mandadas pra IA), `action_processor.py`, `gemini_client.py`, `chat_dialog.py`,
+  `sessions_dialog.py`, `scheduler_dialog.py`, `settings.py`. A chamada vai logo depois do bloco
+  de imports, **antes** de qualquer lista/dict de nível de módulo que já use `_()` — crítico em
+  `settings.py` (`TEMPERATURE_PRESETS`) e em `scheduler_dialog.py` (`_STATUS_LABELS`).
+- **O que NUNCA é traduzido** — strings que só a IA vê (schema de `FunctionDeclaration` em
+  `action_tools.py`, o prompt de sistema em `addon_config.py`, o log textual de `utils.py`, os
+  erros de `action_executor.py`, que só viram `function_response`/log, nunca `plan.explanation`
+  nem `ui.message`); valores de banco como `scheduler_store.STATUS_*` (ficam em inglês, são dado
+  persistido no SQLite — `scheduler_dialog.py` tem um `_STATUS_LABELS` só pra exibição, com
+  fallback pro valor cru se um status não estiver mapeado); e os nomes de idioma em
+  `settings.py:LANGUAGES` (convenção: nome nativo, não traduzido — não confundir com o catálogo
+  gettext da UI, que é um sistema totalmente separado de `response_language`, o idioma em que a
+  IA responde).
+- **Zona cinzenta** — mensagens de `action_processor.py`/`action_tools.py` que alimentam
+  `BatchPlan.explanation` (ex: `_describe_action()`, erros de `validate_args()`) SÃO traduzidas,
+  mesmo sendo também lidas pela IA via `function_response`: elas acabam faladas ao usuário via
+  `ui.message` sempre que a IA não gera texto livre no turno (comum, já que a API roda em
+  `mode=ANY`). Já os erros de `action_executor.py` (aparência superficial igual) nunca passam por
+  `plan.explanation`, só por `function_response`/log — por isso ficam intocados. A distinção é de
+  fluxo de dados, não de onde a string está no código.
+- **Controle de fluxo nunca depende de texto traduzido** — `ActionProcessor.run_batch()` usa um
+  marcador explícito (`item.response["truncated"]`) pra diferenciar "ação truncada pelo limite do
+  turno" de "ação que falhou", exatamente pra não quebrar quando a mensagem de erro for traduzida
+  (antes checava a substring `"limite de"` dentro do texto — uma armadilha clássica de i18n).
+- **Mnemônicos (`&X`) de botão** — cada diálogo (chat, sessões, agendamento normal/perdido) tem
+  seu próprio conjunto; precisam ser únicos DENTRO de cada diálogo, em TODOS os idiomas
+  suportados (inglês incluído, já que é o fallback sem catálogo) — um msgid como `_("&Close")`
+  compartilhado entre 3 diálogos facilmente colide com outro botão do mesmo diálogo se não for
+  checado manualmente a cada idioma.
+- **Comandos locais** — `uv run scons pot` gera `<addon_name>.pot` (precisa de `xgettext`/`msgfmt`
+  do GNU gettext no PATH; no Windows, `winget install mlocati.GetText` resolve, sem equivalente
+  nativo). Validar um `.po` à mão: `msgfmt --check -o NUL addon/locale/<lang>/LC_MESSAGES/nvda.po`
+  (confere plural/formatação `%`) e `msgcmp addon/locale/<lang>/LC_MESSAGES/nvda.po
+  <addon_name>.pot` (confere que nenhum msgid do código ficou sem tradução — a única diferença
+  esperada hoje são as 3 strings de `buildVars.py`, que usam um `_()` de extração só pra isso, já
+  em português, deliberadamente fora deste catálogo).
+- **Testes sem NVDA** — `addonHandler.initTranslation()` de verdade depende do registro de addons
+  carregados pelo NVDA (`getCodeAddon`), que não existe fora dele. `tests/_harness.py` registra um
+  stub de `addonHandler` automaticamente (incondicional, no import do próprio `_harness.py`) com
+  `_`/`ngettext`/etc como identidade — nenhum `test_*.py` precisa chamar nada a mais.
 
 ## Configurações Disponíveis (via Painel NVDA)
 

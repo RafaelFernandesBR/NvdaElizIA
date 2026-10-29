@@ -24,6 +24,7 @@ import speechViewer
 import versionInfo
 import config
 import globalVars
+import addonHandler
 from queueHandler import queueFunction, eventQueue
 from eventHandler import FocusLossCancellableSpeechCommand
 
@@ -84,6 +85,8 @@ confspec = {
 	"enable_shell_tool": "boolean(default=False)",
 }
 config.conf.spec[addon_config.CONFIG_SECTION] = confspec
+
+addonHandler.initTranslation()
 
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
@@ -247,17 +250,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     def script_iniciarOperadorIA(self, gesture):
         if self._automation_lock.locked():
-            ui.message(f"{addon_config.ADDON_NAME} já está em execução")
+            ui.message(_("%s is already running") % addon_config.ADDON_NAME)
             return
         wx.CallAfter(self._start_new_task_flow)
-    script_iniciarOperadorIA.__doc__ = f"Inicia o {addon_config.ADDON_FULL_NAME} para controlar o Windows"
+    script_iniciarOperadorIA.__doc__ = _("Starts %s to control Windows") % addon_config.ADDON_FULL_NAME
 
     def script_gerenciarSessoes(self, gesture):
         if self._automation_lock.locked():
-            ui.message(f"{addon_config.ADDON_NAME} já está em execução")
+            ui.message(_("%s is already running") % addon_config.ADDON_NAME)
             return
         if self.session_store is None:
-            ui.message("Gerenciamento de sessões não está disponível.")
+            ui.message(_("Session management is not available."))
             return
 
         def show_dialog():
@@ -267,11 +270,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             gui.mainFrame.postPopup()
 
         wx.CallAfter(show_dialog)
-    script_gerenciarSessoes.__doc__ = f"Abre a lista de sessões salvas do {addon_config.ADDON_FULL_NAME}"
+    script_gerenciarSessoes.__doc__ = _("Opens the list of saved sessions of %s") % addon_config.ADDON_FULL_NAME
 
     def script_gerenciarAgendamentos(self, gesture):
         if self.scheduler_store is None:
-            ui.message("Agendamento de tarefas não está disponível.")
+            ui.message(_("Task scheduling is not available."))
             return
 
         def show_dialog():
@@ -281,7 +284,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             gui.mainFrame.postPopup()
 
         wx.CallAfter(show_dialog)
-    script_gerenciarAgendamentos.__doc__ = f"Abre a lista de tarefas agendadas do {addon_config.ADDON_FULL_NAME}"
+    script_gerenciarAgendamentos.__doc__ = _("Opens the list of scheduled tasks of %s") % addon_config.ADDON_FULL_NAME
 
     def _start_new_task_flow(self):
         """
@@ -292,7 +295,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         gui.mainFrame.prePopup()
         dlg = wx.TextEntryDialog(
             gui.mainFrame,
-            "O que você quer que eu faça?",
+            _("What do you want me to do?"),
             addon_config.ADDON_FULL_NAME
         )
 
@@ -303,9 +306,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
             if command:
                 if not self._try_start_automation():
-                    ui.message(f"{addon_config.ADDON_NAME} já está em execução")
+                    ui.message(_("%s is already running") % addon_config.ADDON_NAME)
                     return
-                ui.message("Processando...")
+                ui.message(_("Processing..."))
                 time.sleep(addon_config.SHORT_DELAY)
                 self._begin_new_automation(command)
             return
@@ -382,14 +385,14 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         ConversationHistory fora da GUI thread).
         """
         if self._automation_lock.locked():
-            wx.CallAfter(ui.message, f"{addon_config.ADDON_NAME} já está em execução")
+            wx.CallAfter(ui.message, _("%s is already running") % addon_config.ADDON_NAME)
             return
         if self.session_store is None:
             return
 
         record = self.session_store.load_session(session_id)
         if record is None:
-            wx.CallAfter(ui.message, "Sessão não encontrada (pode ter sido excluída).")
+            wx.CallAfter(ui.message, _("Session not found (it may have been deleted)."))
             return
 
         self.current_session_id = session_id
@@ -416,7 +419,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         gui.mainFrame.prePopup()
         self.chat_dialog = OperatorChatDialog(
             gui.mainFrame,
-            addon_config.ADDON_FULL_NAME + " - Chat",
+            _("%s - Chat") % addon_config.ADDON_FULL_NAME,
             None,
             self._on_new_question
         )
@@ -425,7 +428,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         self.chat_dialog.Show()
         gui.mainFrame.postPopup()
         tones.beep(1000, 100)
-        ui.message(f"Sessão '{record.title}' retomada. O que você quer fazer agora?")
+        ui.message(_("Session '%s' resumed. What do you want to do now?") % record.title)
 
     # --- Agendamento de tarefas (scheduler.py / scheduler_store.py / scheduler_dialog.py) ---
 
@@ -454,7 +457,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             dlg.Show()
             gui.mainFrame.postPopup()
             tones.beep(1000, 100)
-            ui.message(f"{len(missed)} tarefa(s) agendada(s) venceram enquanto o NVDA estava fechado.")
+            ui.message(ngettext(
+                "%d scheduled task missed while NVDA was closed.",
+                "%d scheduled tasks missed while NVDA was closed.",
+                len(missed),
+            ) % len(missed))
         except Exception:
             logger.error("Falha ao checar tarefas agendadas perdidas na inicialização", exc_info=True)
 
@@ -464,7 +471,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         if task is None:
             return
         if not self._try_start_automation():
-            wx.CallAfter(ui.message, f"{addon_config.ADDON_NAME} já está em execução")
+            wx.CallAfter(ui.message, _("%s is already running") % addon_config.ADDON_NAME)
             return
         self._begin_new_automation(task.command, steal_focus=True, scheduled_task_id=task.id)
 
@@ -495,7 +502,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         try:
             if self._announce_and_wait_grace(task):
                 self.scheduler_store.cancel_task(task.id)
-                wx.CallAfter(ui.message, f"Tarefa agendada '{task.title}' cancelada.")
+                wx.CallAfter(ui.message, _("Scheduled task '%s' cancelled.") % task.title)
                 return
             self._start_scheduled_task_run(task)
             started = True
@@ -529,8 +536,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
         tones.beep(600, 200)
         ui.message(
-            f"Tarefa agendada '{task.title}' vai começar em {grace_seconds} segundos. "
-            "Pressione Cancelar ou Esc na janela que abriu pra não executar agora."
+            _(
+                "Scheduled task '%(title)s' will start in %(seconds)s seconds. "
+                "Press Cancel or Esc in the window that opened to not run it now."
+            ) % {"title": task.title, "seconds": grace_seconds}
         )
         wx.CallAfter(show)
         if not event.wait(timeout=grace_seconds + 5):
@@ -573,7 +582,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         try:
             run_at_epoch = datetime.fromisoformat(args.get("run_at")).timestamp()
         except (TypeError, ValueError) as e:
-            return {"success": False, "error": f"run_at inválido: {e}"}
+            return {"success": False, "error": _("Invalid run_at: %s") % e}
 
         task_id = self.scheduler_store.create_task(
             command=args.get("command", ""),
@@ -581,7 +590,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             run_at=run_at_epoch,
             created_by="ai",
         )
-        return {"success": True, "message": f"Tarefa agendada (id={task_id}).", "task_id": task_id}
+        return {"success": True, "message": _("Scheduled task created (id=%s).") % task_id, "task_id": task_id}
 
     def _handle_list_scheduled_tasks_tool(self, args):
         tasks = self.scheduler_store.list_tasks(status="pending")[:20]
@@ -598,8 +607,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     def _handle_cancel_scheduled_task_tool(self, args):
         task_id = args.get("task_id")
         if self.scheduler_store.cancel_task(task_id):
-            return {"success": True, "message": f"Tarefa {task_id} cancelada."}
-        return {"success": False, "error": f"Tarefa {task_id} não encontrada ou já não está pendente."}
+            return {"success": True, "message": _("Task %s cancelled.") % task_id}
+        return {"success": False, "error": _("Task %s not found or no longer pending.") % task_id}
 
     def _prompt_user_sync(self, question, timeout_seconds):
         """
@@ -609,7 +618,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         Returns: str (resposta) | None (timeout ou usuário cancelou).
         """
         tones.beep(700, 150)
-        wx.CallAfter(ui.message, f"A IA está perguntando: {question}")
+        wx.CallAfter(ui.message, _("The AI is asking: %s") % question)
 
         event = threading.Event()
         result = {"answer": None}
@@ -649,8 +658,10 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             gui.mainFrame.prePopup()
             dlg = wx.MessageDialog(
                 gui.mainFrame,
-                f"A IA quer executar o seguinte comando no terminal:\n\n{command}\n\n"
-                f"Motivo: {reason}\n\nPermitir?",
+                _(
+                    "The AI wants to run the following command in the terminal:\n\n%(command)s\n\n"
+                    "Reason: %(reason)s\n\nAllow?"
+                ) % {"command": command, "reason": reason},
                 addon_config.ADDON_FULL_NAME,
                 wx.YES_NO | wx.ICON_WARNING | wx.NO_DEFAULT,
             )
@@ -664,7 +675,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 event.set()
 
         tones.beep(500, 150)
-        wx.CallAfter(ui.message, f"A IA quer executar um comando no terminal: {reason}. Confirme na janela que abriu.")
+        wx.CallAfter(ui.message, _("The AI wants to run a terminal command: %s. Confirm in the window that opened.") % reason)
         wx.CallAfter(ask)
         if not event.wait(timeout=addon_config.SHELL_CONFIRM_WAIT_SECONDS):
             wx.CallAfter(lambda: dialog_holder["dlg"].EndModal(wx.ID_NO) if dialog_holder.get("dlg") else None)
@@ -679,7 +690,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         silêncio total até o erro final numa rede lenta.
         """
         tones.beep(400, 150)
-        ui.message("A IA está demorando a responder, aguarde...")
+        ui.message(_("The AI is taking a while to respond, please wait..."))
 
     def _wait_for_stable_screen(self, max_wait):
         """
@@ -770,20 +781,22 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             if is_screen_curtain_active():
                 wx.CallAfter(
                     ui.message,
-                    f"A cortina de tela do NVDA está ativa, então não é possível ver a tela. "
-                    f"Desative a cortina de tela (categoria Visão, nas configurações do NVDA) "
-                    f"antes de usar o {addon_config.ADDON_NAME}."
+                    _(
+                        "NVDA's screen curtain is active, so the screen cannot be seen. "
+                        "Disable the screen curtain (Vision category, in NVDA settings) "
+                        "before using %s."
+                    ) % addon_config.ADDON_NAME
                 )
-                self._finalize_scheduled_task(scheduled_task_id, False, "Cortina de tela ativa.")
+                self._finalize_scheduled_task(scheduled_task_id, False, _("Screen curtain is active."))
                 return
 
             api_key = config.conf[addon_config.CONFIG_SECTION]["gemini_api_key"]
             if not api_key:
                 wx.CallAfter(
                     ui.message,
-                    f"Configure a chave da API Gemini no painel de configurações do NVDA antes de usar o {addon_config.ADDON_NAME}."
+                    _("Set the Gemini API key in the NVDA settings panel before using %s.") % addon_config.ADDON_NAME
                 )
-                self._finalize_scheduled_task(scheduled_task_id, False, "Chave de API Gemini não configurada.")
+                self._finalize_scheduled_task(scheduled_task_id, False, _("Gemini API key not configured."))
                 return
 
             try:
@@ -792,8 +805,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 self.gemini_client = GeminiClient()
             except Exception as e:
                 logger.error(f"Erro ao criar cliente Gemini: {e}", exc_info=True)
-                wx.CallAfter(ui.message, f"Erro ao conectar à API Gemini: {e}")
-                self._finalize_scheduled_task(scheduled_task_id, False, f"Erro ao conectar à API Gemini: {e}")
+                connect_error_text = _("Error connecting to the Gemini API: %s") % e
+                wx.CallAfter(ui.message, connect_error_text)
+                self._finalize_scheduled_task(scheduled_task_id, False, connect_error_text)
                 return
 
             self._current_goal = command
@@ -805,8 +819,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             # Transcrição humana (separada do log técnico que vai pra IA) —
             # 1x por chamada de _run_ai_loop, cobre tanto o comando inicial
             # quanto toda pergunta de continuação. Autosave imediato aqui
-            # pra não perder esse "Você" se algo falhar já no primeiro turno.
-            self.conversation_history.record_conversation_message("Você", command)
+            # pra não perder essa mensagem se algo falhar já no primeiro turno.
+
+            self.conversation_history.record_conversation_message(_("You"), command)
             self._autosave_session()
             # Itens do lote do turno anterior, já com function_response
             # resolvido (ver _execute_batch) — vão no próximo turno.
@@ -842,7 +857,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
                 if not img_base64:
                     logger.error("Falha ao capturar a tela — abortando loop")
-                    wx.CallAfter(ui.message, "Erro ao capturar tela")
+                    wx.CallAfter(ui.message, _("Error capturing the screen"))
                     break
 
                 if pending_items is not None:
@@ -900,7 +915,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                     answer = self._prompt_user_sync(plan.awaiting_question, ask_timeout)
                     if answer is None:
                         self.conversation_history.set_last_model_content(None)
-                        last_display_text = "Parei a automação: sem resposta do usuário à pergunta."
+                        last_display_text = _("I stopped the automation: no response from the user to the question.")
                         wx.CallAfter(ui.message, last_display_text)
                         self._autosave_session()
                         break
@@ -924,7 +939,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                     # mapeado no plano: function_call órfã quebraria uma
                     # pergunta de continuação depois do circuit breaker).
                     self.conversation_history.set_last_model_content(None)
-                    last_display_text = "Parei a automação: a mesma ação se repetiu sem a tela mudar."
+                    last_display_text = _("I stopped the automation: the same action repeated without the screen changing.")
                     wx.CallAfter(ui.message, last_display_text)
                     self._autosave_session()
                     break
@@ -938,8 +953,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                     task_succeeded = bool(plan.success)
                     if not task_succeeded:
                         last_display_text = (
-                            f"Não concluí: {last_display_text}" if last_display_text
-                            else "Não consegui concluir a tarefa."
+                            _("Did not complete: %s") % last_display_text if last_display_text
+                            else _("I could not complete the task.")
                         )
                     self.conversation_history.set_last_model_content(None)
                     self._autosave_session()
@@ -962,16 +977,17 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 # essencial pra um usuário cego sem precisar ouvir o texto
                 # inteiro pra saber se a automação deu certo.
                 tones.beep(300, 250)
-            final_text = last_display_text or "Operação concluída."
+            final_text = last_display_text or _("Operation completed.")
             self._finalize_scheduled_task(scheduled_task_id, task_succeeded, final_text)
             wx.CallAfter(self._show_result_in_chat, command, final_text, steal_focus)
 
         except Exception as e:
             logger.error(f"Exceção não tratada no loop de automação: {e}", exc_info=True)
             tones.beep(300, 250)
-            wx.CallAfter(ui.message, f"Erro: {str(e)}")
-            self._finalize_scheduled_task(scheduled_task_id, False, f"Erro: {str(e)}")
-            wx.CallAfter(self._show_result_in_chat, command, f"Erro: {str(e)}", steal_focus)
+            error_text = _("Error: %s") % str(e)
+            wx.CallAfter(ui.message, error_text)
+            self._finalize_scheduled_task(scheduled_task_id, False, error_text)
+            wx.CallAfter(self._show_result_in_chat, command, error_text, steal_focus)
         finally:
             self._finish_automation()
 
@@ -1001,7 +1017,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 gui.mainFrame.prePopup()
             self.chat_dialog = OperatorChatDialog(
                 gui.mainFrame,
-                addon_config.ADDON_FULL_NAME + " - Chat",
+                _("%s - Chat") % addon_config.ADDON_FULL_NAME,
                 None,
                 self._on_new_question
             )
@@ -1013,7 +1029,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         # Só adiciona "Você" se o dialog foi criado agora.
         # Se já existia, _on_send já adicionou a mensagem do usuário.
         if not dialog_existia:
-            self.chat_dialog.append_message("Você", command)
+            self.chat_dialog.append_message(_("You"), command)
 
         self.chat_dialog.append_message(addon_config.ADDON_NAME, response_text)
         # Transcrição humana — não grava "Você" aqui de novo (já foi feito
@@ -1030,20 +1046,21 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         try:
             logger.info(f"Pergunta de continuação recebida: {question!r}")
             if not self._try_start_automation():
-                wx.CallAfter(ui.message, f"{addon_config.ADDON_NAME} já está em execução")
+                wx.CallAfter(ui.message, _("%s is already running") % addon_config.ADDON_NAME)
                 return
             ActionProcessor._last_actions = []
 
             if self.chat_dialog:
                 wx.CallAfter(self.chat_dialog.Hide)
 
-            wx.CallAfter(ui.message, "Processando...")
+            wx.CallAfter(ui.message, _("Processing..."))
             time.sleep(addon_config.SHORT_DELAY)
             self._run_ai_loop(question)
         except Exception as e:
             logger.error(f"Erro ao processar pergunta de continuação: {e}", exc_info=True)
-            wx.CallAfter(ui.message, f"Erro: {str(e)}")
-            wx.CallAfter(self._show_result_in_chat, question, f"Erro: {str(e)}")
+            error_text = _("Error: %s") % str(e)
+            wx.CallAfter(ui.message, error_text)
+            wx.CallAfter(self._show_result_in_chat, question, error_text)
 
     # Atalhos padrão — o usuário pode reatribuí-los livremente em
     # Preferências > Gestos de entrada (categoria acima, em scriptCategory),

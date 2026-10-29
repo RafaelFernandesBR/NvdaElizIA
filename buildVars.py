@@ -22,14 +22,13 @@ addon_info = AddonInfo(
 	# Translators: Long description to be shown for this add-on on add-on information from add-on store
 	addon_description=_("""Controla o Windows usando IA e visão computacional baseado em screenshots"""),
 	# version
-	addon_version="1.8.0",
+	addon_version="1.9.0",
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version to be shown in the add-on store
-	addon_changelog=_("""Agendamento de tarefas (schedule_task_tool) com confirmação sonora e janela
-de graça cancelável antes de disparar. Novas ferramentas de apoio: abrir
-programas (app_tool), perguntar ao usuário em meio à automação
-(ask_user_tool) e executar comandos de shell com confirmação explícita
-obrigatória (shell_tool, desligada por padrão)."""),
+	addon_changelog=_("""Suporte a tradução (i18n): a interface do addon (falas, diálogos,
+painel de configurações) agora passa pela infraestrutura de tradução do NVDA,
+preparada para receber novos idiomas. O comportamento em português continua
+o mesmo de antes."""),
 	# Author(s)
 	addon_author="Marco <marcorafaeldemelo16@gmail.com>",
 	# URL for the add-on documentation support

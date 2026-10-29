@@ -6,10 +6,14 @@ do Gemini (google-genai), em vez de instruções em prosa + JSON ad-hoc.
 
 from datetime import datetime
 
+import addonHandler
+
 try:
     from google.genai import types
 except ImportError as e:
     raise ImportError(f"google-genai nao foi encontrado: {e}")
+
+addonHandler.initTranslation()
 
 
 def _prop(type_, description, **kw):
@@ -308,14 +312,19 @@ def validate_args(tool_name, args):
     args = args or {}
     required = REQUIRED_ARGS_BY_TOOL.get(tool_name)
     if required is None:
-        return f"Ferramenta desconhecida: {tool_name!r}"
+        return _("Unknown tool: %(tool_name)r") % {"tool_name": tool_name}
 
     missing = [p for p in required if args.get(p) in (None, "")]
     if missing:
-        return f"Parâmetro(s) obrigatório(s) faltando para {tool_name}: {missing}"
+        return _("Missing required parameter(s) for %(tool_name)s: %(missing)s") % {
+            "tool_name": tool_name,
+            "missing": missing,
+        }
 
     if tool_name == "scroll_tool" and args.get("direction") not in ("up", "down"):
-        return f"direction inválido para scroll_tool: {args.get('direction')!r} (esperado 'up' ou 'down')"
+        return _("Invalid direction for scroll_tool: %(direction)r (expected 'up' or 'down')") % {
+            "direction": args.get("direction"),
+        }
 
     if tool_name == "schedule_task_tool":
         run_at_raw = args.get("run_at")
@@ -325,11 +334,13 @@ def validate_args(tool_name, args):
             # então o modelo nunca deveria mandar um offset de timezone.
             run_at = datetime.fromisoformat(run_at_raw).replace(tzinfo=None)
         except (TypeError, ValueError):
-            return (
-                f"run_at inválido para schedule_task_tool: {run_at_raw!r} "
-                "(esperado ISO 8601 'AAAA-MM-DDTHH:MM:SS')"
-            )
+            return _(
+                "Invalid run_at for schedule_task_tool: %(run_at)r "
+                "(expected ISO 8601 'YYYY-MM-DDTHH:MM:SS')"
+            ) % {"run_at": run_at_raw}
         if run_at <= datetime.now():
-            return f"run_at precisa ser no futuro, recebido {run_at_raw!r} que já passou (ou é agora)."
+            return _("run_at must be in the future, received %(run_at)r which has already passed (or is now).") % {
+                "run_at": run_at_raw,
+            }
 
     return None

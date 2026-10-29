@@ -54,7 +54,7 @@ def test_screen_change_on_first_item_aborts_rest_even_on_success():
     )
     assert loop_broken is False
     assert items[0].response["success"] is True and items[0].response["screen_changed"] is True
-    assert items[1].response["success"] is False and "Ignorado" in items[1].response["error"]
+    assert items[1].response["success"] is False and "Skipped" in items[1].response["error"]
     assert items[2].response["success"] is False
     print("test_screen_change_on_first_item_aborts_rest_even_on_success OK")
 
@@ -95,7 +95,7 @@ def test_failed_action_aborts_rest_of_batch():
     assert items[0].response["success"] is True
     assert items[1].response["success"] is False
     assert items[2].response["success"] is False
-    assert "Ignorado" in items[2].response["error"]
+    assert "Skipped" in items[2].response["error"]
     print("test_failed_action_aborts_rest_of_batch OK")
 
 
@@ -135,14 +135,17 @@ def test_validation_error_item_aborts_remaining_execute_items():
     loop_broken = AP.run_batch(items, h("h0"), make_execute_fn([]), make_capture_fn([]))
     assert loop_broken is False
     assert exec_item.response["success"] is False
-    assert "Ignorado" in exec_item.response["error"]
+    assert "Skipped" in exec_item.response["error"]
     print("test_validation_error_item_aborts_remaining_execute_items OK")
 
 
 def test_truncated_item_does_not_abort_anything():
     AP._last_actions = []
     exec_item = BatchItem("keyboard_tool", None, "execute", action_info=FakeActionInfo("keyboard:enter"))
-    truncated = BatchItem("click_tool", None, "skip", {"success": False, "error": "Ignorado: limite de 3 ações por turno excedido."})
+    truncated = BatchItem(
+        "click_tool", None, "skip",
+        {"success": False, "error": "Skipped: turn action limit of 3 exceeded.", "truncated": True},
+    )
     items = [exec_item, truncated]
     AP.run_batch(items, h("h0"), make_execute_fn([(True, None)]), make_capture_fn(["h1"]))
     assert exec_item.response["success"] is True

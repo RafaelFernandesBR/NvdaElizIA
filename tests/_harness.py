@@ -15,10 +15,15 @@ não é só "a lógica funciona com algum sqlite3 qualquer".
 Por que isso funciona: a maioria dos módulos do addon só depende da SDK
 google-genai (bundled) e de stdlib. Só alguns módulos importam APIs
 exclusivas do NVDA/Windows no nível do módulo (`api`, `config`, `wx`,
-`winUser`, `mouseHandler`) — pra esses, basta registrar um módulo falso em
-`sys.modules` ANTES de importar o módulo real; o Python nunca percebe a
-diferença, e o módulo sob teste nem precisa saber que está sendo testado
-fora do NVDA.
+`winUser`, `mouseHandler`, `addonHandler`) — pra esses, basta registrar um
+módulo falso em `sys.modules` ANTES de importar o módulo real; o Python
+nunca percebe a diferença, e o módulo sob teste nem precisa saber que está
+sendo testado fora do NVDA.
+
+`addonHandler` é stubado automaticamente ao importar este arquivo (ver
+`stub_addon_handler_module()` abaixo) — qualquer módulo que chame
+`addonHandler.initTranslation()` já funciona sem precisar de nenhuma
+chamada extra no seu test_*.py.
 
 Uso típico, no topo de um test_*.py:
 
@@ -29,6 +34,7 @@ Uso típico, no topo de um test_*.py:
 """
 
 import importlib.util
+import inspect
 import os
 import sys
 import types as _pytypes
@@ -46,6 +52,36 @@ if _PKG_NAME not in sys.modules:
     _pkg = _pytypes.ModuleType(_PKG_NAME)
     _pkg.__path__ = [ADDON_DIR]
     sys.modules[_PKG_NAME] = _pkg
+
+
+def stub_addon_handler_module():
+    """
+    O addonHandler.initTranslation() real usa getCodeAddon(frameDist=2), que
+    depende do registro de addons carregados pelo NVDA — não existe fora do
+    NVDA rodando. Este stub replica só a mecânica documentada (injetar
+    _/ngettext/pgettext/npgettext como identidade no módulo chamador) sem
+    tentar resolver nenhum addon real.
+
+    Registrado incondicionalmente (abaixo, no import deste arquivo) — ao
+    contrário de stub_nvda_modules()/stub_wx_module(), não precisa ser
+    chamado explicitamente em cada test_*.py, já que é puro Python sem
+    efeito colateral.
+    """
+    if "addonHandler" not in sys.modules:
+        addon_handler_stub = _pytypes.ModuleType("addonHandler")
+
+        def _init_translation():
+            caller_globals = inspect.currentframe().f_back.f_globals
+            caller_globals["_"] = lambda s: s
+            caller_globals["ngettext"] = lambda s, p, n: s if n == 1 else p
+            caller_globals["pgettext"] = lambda ctx, s: s
+            caller_globals["npgettext"] = lambda ctx, s, p, n: s if n == 1 else p
+
+        addon_handler_stub.initTranslation = _init_translation
+        sys.modules["addonHandler"] = addon_handler_stub
+
+
+stub_addon_handler_module()
 
 
 def load_addon_module(modname):
@@ -78,7 +114,7 @@ def stub_nvda_modules(include_config=False):
       o stub devolve None em getForegroundObject(), o que já cai no
       except (AttributeError, TypeError) do próprio addon.
     - `config` (NVDA, não confundir com addon_config.py do addon): usado
-      por gemini_client.py e __init__.py pra ler config.conf["operadorIA"].
+      por gemini_client.py e __init__.py pra ler config.conf["ElizIA"].
       Só stube se for testar esses dois (include_config=True) — a maioria
       dos testes (action_tools, action_processor, utils) não precisa.
     """
