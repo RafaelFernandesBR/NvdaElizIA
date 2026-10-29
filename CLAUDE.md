@@ -15,9 +15,23 @@ pra build (SCons) e CI (GitHub Actions). Por isso a raiz do repositório **não*
 do addon: o conteúdo que o NVDA carrega fica em `addon/`, e tudo abaixo (código,
 `globalPlugins/operadorIA/...`) é relativo a essa pasta, não à raiz do repo. `CLAUDE.md`,
 `ARCHITECTURE.md` e `tests/` ficam na raiz do repo, fora de `addon/`, porque não fazem
-parte do addon instalado. Detalhes de build/CI (buildVars.py, sconstruct, prek.toml,
-workflows) estão documentados no `readme.md` da raiz e nos comentários desses próprios
-arquivos — não duplicados aqui.
+parte do addon instalado. Detalhes adicionais de build/CI (metadados do addon, targets do
+SCons, hooks de lint) estão nos comentários de `buildVars.py`, `sconstruct` e `prek.toml`;
+os comandos do dia a dia estão resumidos abaixo.
+
+## Comandos
+
+```bash
+uv sync                      # instala as ferramentas de build/lint (scons, ruff, pyright, prek) num .venv local
+uv run scons                 # gera <addon_name>-<versão>.nvda-addon na raiz do repo (ex: ElizIA-1.8.0.nvda-addon)
+uv run scons pot             # gera o template de tradução <addon_name>.pot — precisa de GNU gettext no PATH
+python tests/run_all.py      # roda os testes standalone (sem NVDA, sem uv) — ver tests/README.md
+```
+
+- Requer `uv` instalado (`pip install --user uv`, ou ver https://docs.astral.sh/uv/) — `scons` e as outras ferramentas de build/lint vêm via `uv sync`, sem instalação global.
+- O `.nvda-addon` gerado por `uv run scons` é instalável direto: NVDA > Ferramentas > Gerenciar complementos > Instalar a partir de um arquivo externo.
+- Antes de empurrar pro repositório, rode também `uv run prek run --all-files --skip no-commit-to-branch --skip pyright` — os mesmos checks que a CI roda em `build_addon.yml`. Código do addon (`addon/globalPlugins/operadorIA/`) e `tests/` ficam fora desses checks de propósito (ver `exclude` em `prek.toml`).
+- **Workflow obrigatório depois de qualquer mudança de código**, nesta ordem: (1) `python tests/run_all.py`, sem falhas (ver cobertura em [`tests/README.md`](tests/README.md)); (2) rodar o agent `code-reviewer` sobre o diff gerado e corrigir os achados legítimos; (3) só depois dos dois anteriores limpos, `uv run scons` sem erro como último gate antes de considerar a mudança pronta. Não precisa rodar o build a cada iteração só pra "conferir" — os dois primeiros passos já pegam a maioria dos problemas, e o build é o passo mais lento.
 
 ## Estrutura do Projeto
 
