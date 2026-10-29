@@ -4,12 +4,14 @@
 
 default_language_version = { python = "python3.13" }
 
-# Codigo do proprio addon (incluindo o SDK vendorizado em lib/) fica fora de
-# todos os hooks abaixo: lib/ e dependencia de terceiros (nao deve ser
-# reformatada/relintada) e o restante de globalPlugins/operadorIA mantem o
-# estilo de indentacao (espacos) que ja usa em producao, em vez de ser
-# reindentado para TAB por este template.
-exclude = '^addon/globalPlugins/operadorIA/'
+# Codigo proprio (addon + testes standalone) fica fora de todos os hooks
+# abaixo: addon/globalPlugins/operadorIA/lib/ e dependencia de terceiros
+# (nao deve ser reformatada/relintada), o restante de
+# globalPlugins/operadorIA mantem o estilo de indentacao (espacos) que ja
+# usa em producao em vez de virar TAB, e tests/ (ja excluido do ruff e do
+# pyright abaixo) segue o mesmo tratamento pra nao ganhar edicoes
+# mecanicas (ex: add-trailing-comma) fora do que foi pedido.
+exclude = '^(addon/globalPlugins/operadorIA/|tests/)'
 
 [[repos]]
 repo = "meta"

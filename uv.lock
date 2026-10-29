@@ -1,80 +1,6 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = "==3.13.*"
-
-[[package]]
-name = "addontemplate"
-source = { editable = "." }
-
-[package.dev-dependencies]
-build = [
-    { name = "markdown" },
-    { name = "scons" },
-]
-dev = [
-    { name = "crowdin-api-client" },
-    { name = "lxml" },
-    { name = "markdown" },
-    { name = "markdown-link-attr-modifier" },
-    { name = "mdx-gh-links" },
-    { name = "mdx-truly-sane-lists" },
-    { name = "nh3" },
-    { name = "prek" },
-    { name = "pyright", extra = ["nodejs"] },
-    { name = "ruff" },
-    { name = "scons" },
-    { name = "uv" },
-]
-l10n = [
-    { name = "crowdin-api-client" },
-    { name = "lxml" },
-    { name = "markdown-link-attr-modifier" },
-    { name = "mdx-gh-links" },
-    { name = "mdx-truly-sane-lists" },
-    { name = "nh3" },
-]
-lint = [
-    { name = "prek" },
-    { name = "pyright", extra = ["nodejs"] },
-    { name = "ruff" },
-    { name = "uv" },
-]
-
-[package.metadata]
-
-[package.metadata.requires-dev]
-build = [
-    { name = "markdown", specifier = "==3.10" },
-    { name = "scons", specifier = "==4.10.1" },
-]
-dev = [
-    { name = "crowdin-api-client", specifier = "==1.24.1" },
-    { name = "lxml", specifier = "==6.1.0" },
-    { name = "markdown", specifier = "==3.10" },
-    { name = "markdown-link-attr-modifier", specifier = "==0.2.1" },
-    { name = "mdx-gh-links", specifier = "==0.4" },
-    { name = "mdx-truly-sane-lists", specifier = "==1.3" },
-    { name = "nh3", specifier = "==0.3.2" },
-    { name = "prek", specifier = "==0.4.8" },
-    { name = "pyright", extras = ["nodejs"], specifier = "==1.1.407" },
-    { name = "ruff", specifier = "==0.14.5" },
-    { name = "scons", specifier = "==4.10.1" },
-    { name = "uv", specifier = "==0.11.15" },
-]
-l10n = [
-    { name = "crowdin-api-client", specifier = "==1.24.1" },
-    { name = "lxml", specifier = "==6.1.0" },
-    { name = "markdown-link-attr-modifier", specifier = "==0.2.1" },
-    { name = "mdx-gh-links", specifier = "==0.4" },
-    { name = "mdx-truly-sane-lists", specifier = "==1.3" },
-    { name = "nh3", specifier = "==0.3.2" },
-]
-lint = [
-    { name = "prek", specifier = "==0.4.8" },
-    { name = "pyright", extras = ["nodejs"], specifier = "==1.1.407" },
-    { name = "ruff", specifier = "==0.14.5" },
-    { name = "uv", specifier = "==0.11.15" },
-]
 
 [[package]]
 name = "certifi"
@@ -261,6 +187,80 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/04/96/d931255cf9d11a84d6b54d882dba7434646467d568ccf070ea3418638df3/nodejs_wheel_binaries-24.16.0-py2.py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:f1a3d8f7b4491cbbd023ba3fc4e901fcca2d9fb80d57f24ba3890de8b1dbac03", size = 62841759, upload-time = "2026-05-30T16:51:59.407Z" },
     { url = "https://files.pythonhosted.org/packages/a2/7b/8b7a3f41bc255411be30b6d7d288aab8ffd9ea2055db8555ced3548007b9/nodejs_wheel_binaries-24.16.0-py2.py3-none-win_amd64.whl", hash = "sha256:bb136be9944f0662dcf1120f45193a6b75b13fac378971a95cc42c9f879a81aa", size = 42027734, upload-time = "2026-05-30T16:52:03.348Z" },
     { url = "https://files.pythonhosted.org/packages/17/66/1ed71f1f529b8ca727d42c7ceb9db0bef145ce4a13dfc86fb50aa44f3be6/nodejs_wheel_binaries-24.16.0-py2.py3-none-win_arm64.whl", hash = "sha256:8308940b5edd0a50dc5267ea36ba21c9f668e83fe0d9f293937174d3a7e31c36", size = 39714528, upload-time = "2026-05-30T16:52:06.421Z" },
+]
+
+[[package]]
+name = "nvdaelizia"
+source = { editable = "." }
+
+[package.dev-dependencies]
+build = [
+    { name = "markdown" },
+    { name = "scons" },
+]
+dev = [
+    { name = "crowdin-api-client" },
+    { name = "lxml" },
+    { name = "markdown" },
+    { name = "markdown-link-attr-modifier" },
+    { name = "mdx-gh-links" },
+    { name = "mdx-truly-sane-lists" },
+    { name = "nh3" },
+    { name = "prek" },
+    { name = "pyright", extra = ["nodejs"] },
+    { name = "ruff" },
+    { name = "scons" },
+    { name = "uv" },
+]
+l10n = [
+    { name = "crowdin-api-client" },
+    { name = "lxml" },
+    { name = "markdown-link-attr-modifier" },
+    { name = "mdx-gh-links" },
+    { name = "mdx-truly-sane-lists" },
+    { name = "nh3" },
+]
+lint = [
+    { name = "prek" },
+    { name = "pyright", extra = ["nodejs"] },
+    { name = "ruff" },
+    { name = "uv" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+build = [
+    { name = "markdown", specifier = "==3.10" },
+    { name = "scons", specifier = "==4.10.1" },
+]
+dev = [
+    { name = "crowdin-api-client", specifier = "==1.24.1" },
+    { name = "lxml", specifier = "==6.1.0" },
+    { name = "markdown", specifier = "==3.10" },
+    { name = "markdown-link-attr-modifier", specifier = "==0.2.1" },
+    { name = "mdx-gh-links", specifier = "==0.4" },
+    { name = "mdx-truly-sane-lists", specifier = "==1.3" },
+    { name = "nh3", specifier = "==0.3.2" },
+    { name = "prek", specifier = "==0.4.8" },
+    { name = "pyright", extras = ["nodejs"], specifier = "==1.1.407" },
+    { name = "ruff", specifier = "==0.14.5" },
+    { name = "scons", specifier = "==4.10.1" },
+    { name = "uv", specifier = "==0.11.15" },
+]
+l10n = [
+    { name = "crowdin-api-client", specifier = "==1.24.1" },
+    { name = "lxml", specifier = "==6.1.0" },
+    { name = "markdown-link-attr-modifier", specifier = "==0.2.1" },
+    { name = "mdx-gh-links", specifier = "==0.4" },
+    { name = "mdx-truly-sane-lists", specifier = "==1.3" },
+    { name = "nh3", specifier = "==0.3.2" },
+]
+lint = [
+    { name = "prek", specifier = "==0.4.8" },
+    { name = "pyright", extras = ["nodejs"], specifier = "==1.1.407" },
+    { name = "ruff", specifier = "==0.14.5" },
+    { name = "uv", specifier = "==0.11.15" },
 ]
 
 [[package]]
