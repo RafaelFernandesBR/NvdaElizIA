@@ -294,7 +294,7 @@ memória (`_task_text`, `_log_entries`, `_last_model_content`, `_conversation_lo
   testando dentro do NVDA, não hipotético. A correção: copiar, de um
   CPython 3.13 win_amd64 comum (mesmo ABI já usado pelas outras extensões
   compiladas bundled aqui, ex. `_cffi_backend.cp313-win_amd64.pyd`), os 3
-  pedaços que faltam pra `globalPlugins/operadorIA/lib/`:
+  pedaços que faltam pra `addon/globalPlugins/operadorIA/lib/`:
   - `lib/sqlite3/` (o pacote puro Python: `__init__.py`, `dbapi2.py`,
     `dump.py`, `__main__.py`);
   - `lib/_sqlite3.pyd` (a extensão compilada que `sqlite3/dbapi2.py`
@@ -549,7 +549,7 @@ agora" ou "Descartar".
 
 A maior parte da lógica do addon (tudo que não seja mouse/teclado/clipboard
 reais) não depende de nenhuma API exclusiva do NVDA — só da SDK
-`google-genai`, que já está bundled em `globalPlugins/operadorIA/lib/`.
+`google-genai`, que já está bundled em `addon/globalPlugins/operadorIA/lib/`.
 Isso significa que dá pra testar fora do NVDA, com o Python normal do
 sistema, sem instalar nada. Esse padrão nunca tinha sido usado neste
 projeto antes desta refatoração; os scripts ficam em [`tests/`](tests/).
@@ -557,7 +557,7 @@ projeto antes desta refatoração; os scripts ficam em [`tests/`](tests/).
 ### A receita
 
 1. **Colocar `lib/` no `sys.path`** — mesma pasta que o `__init__.py` do
-   addon usa (`globalPlugins/operadorIA/lib/`). Dá acesso a `google.genai`
+   addon usa (`addon/globalPlugins/operadorIA/lib/`). Dá acesso a `google.genai`
    sem precisar instalar nada.
 2. **Fingir que o módulo faz parte do pacote do addon** — os módulos usam
    import relativo (`from . import addon_config`). Pra carregar um deles

@@ -4,33 +4,43 @@ Addon NVDA que permite a usuários cegos controlar o Windows via comandos em lin
 
 > Para o funcionamento interno detalhado (por que o design é assim, o que mudou numa refatoração recente, e como testar sem o NVDA rodando), ver **[ARCHITECTURE.md](ARCHITECTURE.md)**.
 
+Este repositório usa o [nvda-addon-template](https://github.com/accessolutions/nvda-addon-template)
+pra build (SCons) e CI (GitHub Actions). Por isso a raiz do repositório **não** é a raiz
+do addon: o conteúdo que o NVDA carrega fica em `addon/`, e tudo abaixo (código,
+`globalPlugins/operadorIA/...`) é relativo a essa pasta, não à raiz do repo. `CLAUDE.md`,
+`ARCHITECTURE.md` e `tests/` ficam na raiz do repo, fora de `addon/`, porque não fazem
+parte do addon instalado. Detalhes de build/CI (buildVars.py, sconstruct, prek.toml,
+workflows) estão documentados no `readme.md` da raiz e nos comentários desses próprios
+arquivos — não duplicados aqui.
+
 ## Estrutura do Projeto
 
 ```
-manifest.ini                        # Metadados do addon (nome, versão, compatibilidade NVDA)
+buildVars.py                        # Metadados do addon pro build (nome, versão, autor, urls) — gera manifest.ini
+addon/
+└── globalPlugins/operadorIA/
+    ├── __init__.py                 # GlobalPlugin: atalhos, loop principal de automação, fire-time gate do scheduler
+    ├── addon_config.py             # Constantes internas, prompt do sistema, safety settings
+    ├── action_tools.py             # Ações da IA como types.FunctionDeclaration (function calling nativo)
+    ├── gemini_client.py            # Cliente SDK oficial google-genai, com tools/mode=ANY forçado
+    ├── action_processor.py         # Planeja (BatchPlan/BatchItem) e executa (run_batch) lotes de ação
+    ├── action_executor.py          # Execução real: mouse, teclado, clipboard, app/shell (ctypes/winUser/subprocess)
+    ├── screen_capture.py           # Captura fullscreen via wxPython → base64 PNG (com downscale)
+    ├── chat_dialog.py              # UI de chat (wxPython) para interação contínua
+    ├── sessions_dialog.py          # UI (wxPython) de gerenciamento de seções salvas
+    ├── session_store.py           # Persistência de seções em SQLite (sqlite3 vendorizado em lib/, não vem com o NVDA)
+    ├── scheduler.py                # Timer + polling de tarefas agendadas (gui.NonReEntrantTimer, idiom do AutoUpdateChecker do NVDA core)
+    ├── scheduler_store.py          # Persistência de tarefas agendadas em SQLite (mesmo arquivo de session_store.py, tabela própria)
+    ├── scheduler_dialog.py         # UI (wxPython): lista de agendamentos + janela de aviso/graça cancelável
+    ├── settings.py                 # Painel de configurações integrado ao NVDA
+    ├── utils.py                    # ConversationHistory (histórico O(1) por turno), clean_markdown
+    └── lib/                        # Dependências bundled (google-genai SDK + deps)
+        ├── google/genai/           # SDK oficial do Google Gemini
+        ├── anyio/                  # Async I/O library
+        ├── pydantic/               # Data validation
+        └── ... (outras libs de suporte)
 ARCHITECTURE.md                     # Detalhamento técnico do pipeline de IA e gestão de contexto
 tests/                              # Testes standalone (sem NVDA, sem pytest) — ver tests/README.md
-globalPlugins/operadorIA/
-├── __init__.py                     # GlobalPlugin: atalhos, loop principal de automação, fire-time gate do scheduler
-├── addon_config.py                 # Constantes internas, prompt do sistema, safety settings
-├── action_tools.py                 # Ações da IA como types.FunctionDeclaration (function calling nativo)
-├── gemini_client.py                # Cliente SDK oficial google-genai, com tools/mode=ANY forçado
-├── action_processor.py             # Planeja (BatchPlan/BatchItem) e executa (run_batch) lotes de ação
-├── action_executor.py              # Execução real: mouse, teclado, clipboard, app/shell (ctypes/winUser/subprocess)
-├── screen_capture.py               # Captura fullscreen via wxPython → base64 PNG (com downscale)
-├── chat_dialog.py                  # UI de chat (wxPython) para interação contínua
-├── sessions_dialog.py              # UI (wxPython) de gerenciamento de seções salvas
-├── session_store.py                # Persistência de seções em SQLite (sqlite3 vendorizado em lib/, não vem com o NVDA)
-├── scheduler.py                    # Timer + polling de tarefas agendadas (gui.NonReEntrantTimer, idiom do AutoUpdateChecker do NVDA core)
-├── scheduler_store.py              # Persistência de tarefas agendadas em SQLite (mesmo arquivo de session_store.py, tabela própria)
-├── scheduler_dialog.py             # UI (wxPython): lista de agendamentos + janela de aviso/graça cancelável
-├── settings.py                     # Painel de configurações integrado ao NVDA
-├── utils.py                        # ConversationHistory (histórico O(1) por turno), clean_markdown
-└── lib/                            # Dependências bundled (google-genai SDK + deps)
-    ├── google/genai/               # SDK oficial do Google Gemini
-    ├── anyio/                      # Async I/O library
-    ├── pydantic/                   # Data validation
-    └── ... (outras libs de suporte)
 ```
 
 ## Como Funciona
@@ -86,7 +96,7 @@ Detalhamento de cada um (com trechos de código e o raciocínio por trás) está
 
 ## Convenções de Desenvolvimento
 
-- **Dependências bundled** — SDK oficial `google-genai` incluído em `globalPlugins/operadorIA/lib/` com todas as dependências (anyio, cffi, cryptography, pydantic, etc.). wxPython (`wx`) **não** está aqui — é fornecido pelo próprio NVDA. **`sqlite3` também precisou ser vendorizado** (`lib/sqlite3/` + `lib/_sqlite3.pyd` + `lib/sqlite3.dll`) — diferente das outras libs, não é algo baixado via pip; são os 3 arquivos equivalentes copiados de um CPython 3.13 win_amd64 comum (mesmo ABI já usado pelos outros `.pyd` bundled aqui), porque a build de Python embutida no NVDA não inclui esse módulo de fábrica. Se atualizar o Python usado para gerar os outros `.pyd` (ex: pular pra cp314), os 3 arquivos do sqlite3 precisam ser recopiados de uma instalação da MESMA versão, senão o ABI não casa.
+- **Dependências bundled** — SDK oficial `google-genai` incluído em `addon/globalPlugins/operadorIA/lib/` com todas as dependências (anyio, cffi, cryptography, pydantic, etc.). wxPython (`wx`) **não** está aqui — é fornecido pelo próprio NVDA. **`sqlite3` também precisou ser vendorizado** (`lib/sqlite3/` + `lib/_sqlite3.pyd` + `lib/sqlite3.dll`) — diferente das outras libs, não é algo baixado via pip; são os 3 arquivos equivalentes copiados de um CPython 3.13 win_amd64 comum (mesmo ABI já usado pelos outros `.pyd` bundled aqui), porque a build de Python embutida no NVDA não inclui esse módulo de fábrica. Se atualizar o Python usado para gerar os outros `.pyd` (ex: pular pra cp314), os 3 arquivos do sqlite3 precisam ser recopiados de uma instalação da MESMA versão, senão o ABI não casa.
 - **Path de imports** — `__init__.py` adiciona `lib/` ao `sys.path` e chama `os.add_dll_directory(lib_path)` antes de importar; permite usar `google.genai`/`sqlite3` sem instalação global.
 - **Thread safety** — toda atualização de UI usa `wx.CallAfter()`; nenhuma chamada de API no thread principal. `_speech_history` é protegido por `threading.Lock` (escrito pela thread do `eventQueue` do NVDA, lido pela thread de automação). `self._automation_lock` (`threading.Lock`) é o único jeito de reservar uma automação — nunca leia/escreva um bool solto pra isso: os 4 pontos de entrada (atalho, chat, retomada de sessão, scheduler) chamam `_try_start_automation()`/`_finish_automation()`; `.locked()` serve só pra um aviso prévio não-consumptivo antes de abrir um diálogo.
 - **Coordenadas** — a IA sempre responde em escala 0-1000; a conversão para pixels reais ocorre em `ActionProcessor._scale_coordinates`, com base na resolução REAL da tela (não na imagem, possivelmente redimensionada, que a IA recebeu).
@@ -129,7 +139,10 @@ Detalhamento de cada um (com trechos de código e o raciocínio por trás) está
 
 ## Compatibilidade
 
-- NVDA mínimo: 2019.3
+- NVDA mínimo: 2026.1 (primeira versão com Python 3.13/64-bit — os binários cp313
+  vendorizados em `lib/`, como `_sqlite3.pyd` e `_pydantic_core*.pyd`, não carregam em
+  versões anteriores, que usavam Python 3.7/32-bit; ver `source/addonAPIVersion.py` no
+  repositório do NVDA)
 - Última versão testada: 2026.4
-- Python: versão embutida no NVDA (3.x)
-- Windows: qualquer versão suportada pelo NVDA
+- Python: versão embutida no NVDA (3.13, 64-bit)
+- Windows: qualquer versão suportada pelo NVDA 2026.1+
