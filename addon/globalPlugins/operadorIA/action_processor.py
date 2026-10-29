@@ -1,0 +1,423 @@
+# -*- coding: utf-8 -*-
+"""
+Processador de ações da IA.
+Converte as function_calls nativas do Gemini (ver action_tools.py) em
+ActionInfo para o ActionExecutor, validando argumentos antes de executar.
+"""
+
+import hashlib
+import logging
+from typing import NamedTuple, List, Optional
+
+from . import addon_config
+from . import action_tools
+
+logger = logging.getLogger(__name__)
+
+
+class ActionInfo:
+    """Representa uma ação física a ser executada"""
+
+    def __init__(self, action_type, x=None, y=None, text="", press_enter=False,
+                 keys="", direction="down", amount=3, seconds=0,
+                 app_name="", command="", reason=""):
+        """
+        Args:
+            action_type: click, right_click, double_click, type, keyboard, scroll, wait,
+                launch_app, shell_command
+            x, y: Coordenadas em pixels (None quando não se aplica)
+            text: Texto para digitar (type)
+            press_enter: Se deve pressionar Enter após digitar (type)
+            keys: String de teclas, ex. "win+r" (keyboard)
+            direction: "up" ou "down" (scroll)
+            amount: Quantidade de scroll, 1-10 (scroll)
+            seconds: Segundos a esperar (wait)
+            app_name: Nome do programa a abrir (launch_app)
+            command: Comando de shell a executar (shell_command)
+            reason: Explicação em linguagem simples do comando (shell_command)
+        """
+        self.action_type = action_type
+        self.x = x
+        self.y = y
+        self.text = text
+        self.press_enter = press_enter
+        self.keys = keys
+        self.direction = direction
+        self.amount = amount
+        self.seconds = seconds
+        self.app_name = app_name
+        self.command = command
+        self.reason = reason
+
+    def __repr__(self):
+        if self.action_type == "keyboard":
+            return f"ActionInfo(keyboard, keys={self.keys})"
+        elif self.action_type == "scroll":
+            return f"ActionInfo(scroll, direction={self.direction}, amount={self.amount})"
+        elif self.action_type == "wait":
+            return f"ActionInfo(wait, seconds={self.seconds})"
+        elif self.action_type == "launch_app":
+            return f"ActionInfo(launch_app, app_name={self.app_name})"
+        elif self.action_type == "shell_command":
+            return f"ActionInfo(shell_command, command={self.command})"
+        return f"ActionInfo({self.action_type}, {self.x}, {self.y}, {self.text}, {self.press_enter})"
+
+    def signature(self):
+        """
+        Assinatura usada para detecção de loop (mesma ação repetida). Cada
+        action_type precisa de um ramo explícito aqui — o fallback genérico
+        (`self.action_type` cru) faria duas chamadas DIFERENTES (ex:
+        app_tool("notepad") e app_tool("calc")) colidirem na mesma
+        assinatura e disparar o circuit breaker por engano.
+        """
+        if self.action_type == "keyboard":
+            return f"keyboard:{self.keys}"
+        if self.action_type == "scroll":
+            return f"scroll:{self.direction}:{self.amount}"
+        if self.action_type in ("click", "double_click", "right_click"):
+            return f"{self.action_type}({self.x},{self.y})"
+        if self.action_type == "launch_app":
+            return f"launch_app:{self.app_name}"
+        if self.action_type == "shell_command":
+            return f"shell_command:{self.command}"
+        return self.action_type
+
+
+class BatchItem:
+    """
+    Uma function_call recebida da IA dentro do lote do turno, e o
+    function_response correspondente.
+
+    kind="skip": já resolvido (erro de validação, done_tool, excedente do
+        limite por turno) — response já preenchido, nada a executar.
+    kind="execute": ação física pendente de execução — o chamador
+        (ActionExecutor, orquestrado em __init__.py) preenche `response`
+        depois de rodar `action_info`.
+    kind="support": tool que faz algo real (ex: grava uma tarefa agendada)
+        mas nunca mexe na tela — já resolvida aqui mesmo, via handler
+        injetado (ver process_function_calls), response já preenchido.
+        Nunca passa por run_batch/capture_fn/is_loop_detected: diferente
+        de "skip", seu sucesso/falha nunca aborta o resto do lote.
+    """
+
+    def __init__(self, name, call_id, kind, response=None, action_info=None):
+        self.name = name
+        self.id = call_id
+        self.kind = kind
+        self.response = response
+        self.action_info = action_info
+
+
+class BatchPlan(NamedTuple):
+    items: List[BatchItem]
+    is_finished: bool
+    explanation: str
+    # None enquanto a tarefa não terminou; só é significativo quando
+    # is_finished=True (preenchido a partir do success= que a IA passou
+    # pro done_tool) — __init__.py usa isso pra escolher o beep/prefixo.
+    success: Optional[bool] = None
+    # Preenchido só quando a IA chama ask_user_tool (sozinha, sem outra
+    # tool no turno) — sinaliza pro _run_ai_loop pausar e esperar uma
+    # resposta síncrona do usuário antes de seguir, em vez de executar
+    # qualquer BatchItem. None no caso comum (nenhuma pergunta pendente).
+    awaiting_question: Optional[str] = None
+
+
+class ActionProcessor:
+    """Processa as function_calls nativas da IA e extrai ações"""
+
+    _last_actions = []
+
+    @staticmethod
+    def _scale_coordinates(x, y, screen_w, screen_h):
+        """Converte coordenadas normalizadas (0-1000) para pixels reais."""
+        real_x = int(x * screen_w / addon_config.COORDINATE_SCALE)
+        real_y = int(y * screen_h / addon_config.COORDINATE_SCALE)
+        return real_x, real_y
+
+    @staticmethod
+    def is_loop_detected(action_signature, screen_changed):
+        """
+        Rastreia a sequência de ações SEM EFEITO (tela não mudou) e retorna
+        True se a mesma ação se repetiu LOOP_DETECTION_THRESHOLD vezes
+        seguidas nessa sequência — circuit breaker real (quem chama deve de
+        fato interromper o loop, não só logar).
+
+        Toda vez que a tela muda, a sequência de "sem efeito" é zerada: uma
+        ação repetida que está de fato produzindo efeito (ex: scroll
+        avançando numa lista longa) nunca deve ser confundida com um loop.
+        """
+        if screen_changed:
+            ActionProcessor._last_actions = []
+            return False
+
+        ActionProcessor._last_actions.append(action_signature)
+        if len(ActionProcessor._last_actions) > addon_config.MAX_ACTION_HISTORY:
+            ActionProcessor._last_actions.pop(0)
+
+        if len(ActionProcessor._last_actions) >= addon_config.LOOP_DETECTION_THRESHOLD:
+            recent = ActionProcessor._last_actions[-addon_config.LOOP_DETECTION_THRESHOLD:]
+            if len(set(recent)) == 1:
+                logger.warning(
+                    f"Loop detectado: ação {recent[0]!r} repetida {len(recent)}x sem mudança de tela"
+                )
+                return True
+        return False
+
+    @staticmethod
+    def run_batch(items, pre_batch_hash, execute_fn, capture_fn):
+        """
+        Executa em sequência os itens "execute" de um BatchPlan, abortando o
+        restante da fila se uma ação falhar ou a tela mudar no meio —
+        mesmo padrão do multi_act() do browser-use (max_actions_per_step +
+        abort em mudança de página), adaptado pra mudança de tela em vez de
+        URL/DOM. Também aplica o circuit breaker real de loop
+        (is_loop_detected) a cada ação física executada.
+
+        Extraído como função pura (recebe `execute_fn`/`capture_fn` como
+        callables em vez de chamar ActionExecutor/capture_fullscreen
+        diretamente) justamente pra poder ser testado fora do NVDA — ver
+        tests/test_execute_batch.py — sem precisar duplicar a lógica numa
+        "réplica" que poderia ficar desatualizada em relação ao código real.
+
+        Args:
+            items: lista de BatchItem — mutados in-place, cada um recebe seu
+                function_response final em `.response`.
+            pre_batch_hash: hash MD5 da tela capturada ANTES deste turno
+                (baseline para detectar a mudança causada pelo 1º item).
+            execute_fn: callable(action_info) -> (success: bool, error: str|None).
+                Em produção é GlobalPlugin._execute_batch que passa um
+                wrapper fino em volta de ActionExecutor.execute_action.
+            capture_fn: callable() -> img_base64 (str) | None. Em produção,
+                um wrapper fino em volta de screen_capture.capture_fullscreen.
+
+        Returns:
+            bool: True se o circuit breaker de loop disparou (a automação
+            inteira deve ser interrompida); False caso contrário.
+        """
+        batch_aborted = False
+        last_hash = pre_batch_hash
+
+        for item in items:
+            if item.kind == "support":
+                # Já resolvida em process_function_calls (não mexe na tela)
+                # — nunca passa por capture_fn/is_loop_detected, nem conta
+                # pra abortar o resto do lote, mesmo se tiver falhado (um
+                # schedule_task_tool com data inválida não deveria
+                # interromper um click_tool no mesmo turno).
+                continue
+
+            if item.kind == "skip":
+                is_truncation = "limite de" in (item.response.get("error") or "")
+                if item.response.get("success") is False and not is_truncation:
+                    batch_aborted = True
+                continue
+
+            if batch_aborted:
+                item.response = {
+                    "success": False,
+                    "error": "Ignorado: lote interrompido (ação anterior falhou ou a tela mudou).",
+                }
+                continue
+
+            success, exec_error = execute_fn(item.action_info)
+
+            new_img = capture_fn()
+            screen_changed = False
+            if new_img:
+                new_hash = hashlib.md5(new_img.encode()).hexdigest()
+                screen_changed = new_hash != last_hash
+                last_hash = new_hash
+
+            item.response = {"success": success, "error": exec_error, "screen_changed": screen_changed}
+
+            if ActionProcessor.is_loop_detected(item.action_info.signature(), screen_changed):
+                return True
+
+            if not success or screen_changed:
+                batch_aborted = True
+
+        return False
+
+    @staticmethod
+    def process_function_calls(function_calls, screen_w, screen_h, support_handlers=None):
+        """
+        Planeja a execução do lote de function_calls devolvido pelo Gemini
+        para este turno (até addon_config.MAX_ACTIONS_PER_TURN ações físicas).
+
+        Só decide o QUE fazer e valida parâmetros — quem efetivamente executa,
+        confere se a tela mudou entre uma ação e outra do lote, e interrompe o
+        restante da fila nesse caso (ou se uma ação falhar), é a orquestração
+        em __init__.py (ActionExecutor + captura de tela), seguindo o mesmo
+        padrão de "abortar o resto do lote se o estado mudar no meio" usado
+        pelo browser-use.
+
+        Política:
+        - Nenhuma function_call: anômalo (mode=ANY deveria sempre retornar uma);
+          não executa nada, não finaliza, pede retry no próximo turno.
+        - done_tool/ask_user_tool junto de outra ferramenta: rejeita todas,
+          pede retry limpo (mesma regra de exclusividade pras duas).
+        - Só done_tool: tarefa concluída, sem ação física.
+        - Só ask_user_tool: BatchPlan.awaiting_question preenchido, sem
+          ação física — cabe ao chamador (NVDA/wx-aware) pausar e obter a
+          resposta do usuário de forma síncrona, fora desta função pura.
+        - Tool "support" (schedule_task_tool e afins — ver action_tools.
+          TOOL_NAME_TO_ACTION_TYPE): resolvida JÁ AQUI via o handler
+          correspondente em `support_handlers` (nunca mexe na tela, nunca
+          passa por run_batch/capture_fn).
+        - Caso contrário: um item por function_call, na ordem recebida. Itens
+          com parâmetro inválido ficam "skip" (não executam) — cabe ao
+          chamador decidir se isso também aborta o restante do lote. Itens
+          além do limite por turno também ficam "skip", sem abortar nada.
+
+        Args:
+            support_handlers: dict[str, Callable[[dict], dict]] opcional —
+                nome da tool "support" -> handler(args) -> dict de resposta
+                (deve conter ao menos "success": bool). Mesma injeção de
+                dependência que run_batch já usa pra execute_fn/capture_fn,
+                pelo mesmo motivo: manter esta função pura/testável sem
+                SQLite real. Tool "support" sem handler injetado (ex: teste
+                que não passou nada) devolve um erro gracioso, nunca lança.
+
+        Returns:
+            BatchPlan
+        """
+        if not function_calls:
+            logger.warning("Nenhuma function_call recebida da IA (inesperado com mode=ANY)")
+            return BatchPlan([], False, "A IA não retornou nenhuma ação válida.")
+
+        support_handlers = support_handlers or {}
+
+        done_calls = [fc for fc in function_calls if fc.name == "done_tool"]
+        ask_user_calls = [fc for fc in function_calls if fc.name == "ask_user_tool"]
+
+        if (done_calls or ask_user_calls) and len(function_calls) > 1:
+            exclusive_name = "done_tool" if done_calls else "ask_user_tool"
+            explanation = f"{exclusive_name} não pode ser chamado junto de outra ferramenta no mesmo turno."
+            items = [
+                BatchItem(fc.name, fc.id, "skip", {"success": False, "error": explanation})
+                for fc in function_calls
+            ]
+            return BatchPlan(items, False, explanation)
+
+        if done_calls:
+            fc = done_calls[0]
+            args = fc.args or {}
+            error = action_tools.validate_args(fc.name, args)
+            if error:
+                item = BatchItem(fc.name, fc.id, "skip", {"success": False, "error": error})
+                return BatchPlan([item], False, error)
+            summary = args.get("summary", "")
+            success = bool(args.get("success"))
+            item = BatchItem(fc.name, fc.id, "skip", {"success": success, "acknowledged": True})
+            return BatchPlan([item], True, summary, success)
+
+        if ask_user_calls:
+            fc = ask_user_calls[0]
+            args = fc.args or {}
+            error = action_tools.validate_args(fc.name, args)
+            if error:
+                item = BatchItem(fc.name, fc.id, "skip", {"success": False, "error": error})
+                return BatchPlan([item], False, error)
+            question = args.get("question", "")
+            item = BatchItem(fc.name, fc.id, "skip")  # .response preenchido depois, com a resposta do usuário
+            return BatchPlan([item], False, question, awaiting_question=question)
+
+        items = []
+        explanations = []
+        for i, call in enumerate(function_calls):
+            if i >= addon_config.MAX_ACTIONS_PER_TURN:
+                items.append(BatchItem(
+                    call.name, call.id, "skip",
+                    {"success": False, "error": f"Ignorado: limite de {addon_config.MAX_ACTIONS_PER_TURN} ações por turno excedido."}
+                ))
+                continue
+
+            action_type = action_tools.TOOL_NAME_TO_ACTION_TYPE.get(call.name)
+            error = action_tools.validate_args(call.name, call.args)
+            if error:
+                items.append(BatchItem(call.name, call.id, "skip", {"success": False, "error": error}))
+                explanations.append(error)
+                continue
+
+            if action_type == "support":
+                handler = support_handlers.get(call.name)
+                if handler is None:
+                    response = {"success": False, "error": "Função de apoio não disponível neste contexto."}
+                else:
+                    response = handler(call.args or {})
+                items.append(BatchItem(call.name, call.id, "support", response=response))
+                explanations.append(response.get("message") or response.get("error") or call.name)
+                continue
+
+            action_info = ActionProcessor._build_action_info(action_type, call.args or {}, screen_w, screen_h)
+            items.append(BatchItem(call.name, call.id, "execute", action_info=action_info))
+            explanations.append(ActionProcessor._describe_action(action_type, call.args or {}))
+
+        return BatchPlan(items, False, " | ".join(explanations) if explanations else "")
+
+    @staticmethod
+    def _build_action_info(action_type, args, screen_w, screen_h):
+        if action_type == "keyboard":
+            return ActionInfo(action_type="keyboard", keys=args.get("keys", ""))
+
+        if action_type == "wait":
+            return ActionInfo(action_type="wait", seconds=args.get("seconds") or 2)
+
+        if action_type == "scroll":
+            x, y = args.get("x"), args.get("y")
+            if x is not None and y is not None:
+                real_x, real_y = ActionProcessor._scale_coordinates(x, y, screen_w, screen_h)
+            else:
+                # O scroll do mouse é entregue à janela SOB o cursor, não à
+                # janela em foco — sem x/y explícito, usamos o centro da tela.
+                real_x, real_y = screen_w // 2, screen_h // 2
+            return ActionInfo(
+                action_type="scroll",
+                x=real_x, y=real_y,
+                direction=args.get("direction", "down"),
+                amount=args.get("amount") or addon_config.DEFAULT_SCROLL_AMOUNT,
+            )
+
+        if action_type == "type":
+            x, y = args.get("x"), args.get("y")
+            real_x, real_y = (None, None)
+            if x is not None and y is not None:
+                real_x, real_y = ActionProcessor._scale_coordinates(x, y, screen_w, screen_h)
+            return ActionInfo(
+                action_type="type",
+                x=real_x, y=real_y,
+                text=args.get("text", ""),
+                press_enter=bool(args.get("press_enter", False)),
+            )
+
+        if action_type == "launch_app":
+            return ActionInfo(action_type="launch_app", app_name=args.get("app_name", ""))
+
+        if action_type == "shell_command":
+            return ActionInfo(
+                action_type="shell_command",
+                command=args.get("command", ""),
+                reason=args.get("reason", ""),
+            )
+
+        # click / right_click / double_click
+        real_x, real_y = ActionProcessor._scale_coordinates(args.get("x"), args.get("y"), screen_w, screen_h)
+        return ActionInfo(action_type=action_type, x=real_x, y=real_y)
+
+    @staticmethod
+    def _describe_action(action_type, args):
+        """Descrição curta de fallback, usada quando a IA não manda texto junto da tool call."""
+        if action_type == "keyboard":
+            return f"Enviando atalho {args.get('keys', '')}"
+        if action_type == "type":
+            return f"Digitando: {args.get('text', '')}"
+        if action_type == "scroll":
+            return f"Rolando para {args.get('direction', 'down')}"
+        if action_type == "wait":
+            return "Aguardando..."
+        if action_type == "launch_app":
+            return f"Abrindo {args.get('app_name', '')}"
+        if action_type == "shell_command":
+            return f"Comando de terminal: {args.get('reason', '')}"
+        return f"Executando {action_type}"
