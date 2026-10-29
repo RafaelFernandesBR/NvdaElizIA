@@ -1,4 +1,10 @@
-# operadorIA — NVDA Addon
+# ElizIA (operadorIA) — NVDA Addon
+
+> Nomenclatura: o identificador instalado/manifest (`addon_name` em `buildVars.py`,
+> `config.conf["ElizIA"]`, a pasta `%APPDATA%\nvda\addons\ElizIA\`) é **ElizIA**. O pacote
+> Python interno em `addon/globalPlugins/operadorIA/` manteve o nome histórico
+> `operadorIA` — é só uma pasta/módulo, invisível pro NVDA e pro usuário final, sem relação
+> com a identidade do addon instalado.
 
 Addon NVDA que permite a usuários cegos controlar o Windows via comandos em linguagem natural, usando a API de visão do Google Gemini. O usuário descreve o que quer fazer; o addon captura a tela, envia ao Gemini (via **function calling nativo**, não JSON em prosa), executa as ações escolhidas (cliques, teclado, digitação, scroll) em lotes de até algumas ações por turno, e repete até a IA declarar a tarefa concluída.
 
@@ -81,7 +87,7 @@ tests/                              # Testes standalone (sem NVDA, sem pytest) �
 
 Detalhamento de cada um (com trechos de código e o raciocínio por trás) está em [ARCHITECTURE.md](ARCHITECTURE.md). Resumo:
 
-- **`addon_config.py`** — constantes internas (delays, `MAX_ACTIONS_PER_TURN`, `MAX_HISTORY_LOG_ITEMS`, `MAX_SCREENSHOT_DIMENSION`, `AI_OPERATOR_PROMPT_TEMPLATE`, `SAFETY_SETTINGS`) + leitura das configurações do usuário via `config.conf["operadorIA"]`.
+- **`addon_config.py`** — constantes internas (delays, `MAX_ACTIONS_PER_TURN`, `MAX_HISTORY_LOG_ITEMS`, `MAX_SCREENSHOT_DIMENSION`, `AI_OPERATOR_PROMPT_TEMPLATE`, `SAFETY_SETTINGS`) + leitura das configurações do usuário via `config.conf["ElizIA"]` (= `addon_config.CONFIG_SECTION`, igual a `ADDON_NAME`).
 - **`action_tools.py`** — schema tipado de cada tool (`get_tool()`, `validate_args()`, `TOOL_NAME_TO_ACTION_TYPE`).
 - **`gemini_client.py`** — `GeminiClient.generate_content()` devolve um `TurnResult` (function_calls, text, error, model_content, finish_reason); nunca usa automatic function calling da SDK. Criado sob demanda em `_run_ai_loop`, não no `__init__` do plugin (a SDK valida a API key no construtor).
 - **`action_processor.py`** — `process_function_calls()` planeja (`BatchPlan`/`BatchItem`); `run_batch()` executa com abort-on-change e circuit breaker de loop; ambos puros/testáveis sem NVDA.
@@ -126,7 +132,7 @@ Detalhamento de cada um (com trechos de código e o raciocínio por trás) está
 
 ## Segurança
 
-- **Configurações sensíveis** lidas do painel NVDA via `config.conf["operadorIA"]` (não hardcoded). Se a chave estiver vazia, o addon avisa e não trava a inicialização do NVDA.
+- **Configurações sensíveis** lidas do painel NVDA via `config.conf["ElizIA"]` (não hardcoded). Se a chave estiver vazia, o addon avisa e não trava a inicialização do NVDA.
 - **Clipboard** é salvo e restaurado antes/depois de cada `execute_type_action()` para evitar perda de dados.
 - **Histórico de fala** é temporário (deque em memória, com deduplicação de frases repetidas consecutivas, não persiste em disco).
 - **`BLOCK_NONE`** nas safety settings do Gemini é intencional — o addon precisa lidar com qualquer conteúdo de tela.

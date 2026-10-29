@@ -6,7 +6,9 @@ Configurações do ElizIA Visual
 # --- Informações do Addon
 ADDON_NAME = "ElizIA"
 ADDON_FULL_NAME = "ElizIA Visual"
-CONFIG_SECTION = "operadorIA"
+# Mesmo valor do addon_name em buildVars.py — é o identificador instalado
+# (pasta em %APPDATA%\nvda\addons\<nome>\) e a seção de config.conf.
+CONFIG_SECTION = ADDON_NAME
 
 # --- Delays de Loop e Ação
 SHORT_DELAY = 0.5
@@ -115,7 +117,7 @@ STABILITY_MAX_WAIT_ACTION = 3.0
 # max_sessions no painel não afeta sessões já salvas até a próxima criação.
 # sqlite3 é vendorizado em lib/ (ver comentário em __init__.py) — a build
 # de Python embutida no NVDA não traz esse módulo.
-SESSION_DB_FILENAME = "operadorIA_sessions.db"
+SESSION_DB_FILENAME = f"{ADDON_NAME}_sessions.db"
 DEFAULT_MAX_SESSIONS = 50
 SESSION_TITLE_MAX_LENGTH = 60
 SESSION_DATETIME_DISPLAY_FORMAT = "%d/%m/%Y %H:%M"

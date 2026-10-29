@@ -279,7 +279,7 @@ memória (`_task_text`, `_log_entries`, `_last_model_content`, `_conversation_lo
   `tests/test_session_store.py`). Cada método público abre/fecha sua
   própria conexão (em vez de uma conexão compartilhada entre a thread de
   automação e a GUI thread, que exigiria `check_same_thread=False`).
-- O banco (`operadorIA_sessions.db`) fica no perfil ativo do NVDA
+- O banco (`ElizIA_sessions.db`) fica no perfil ativo do NVDA
   (`globalVars.appArgs.configPath`, ao lado do `nvda.ini`) — resolvido por
   `GlobalPlugin._resolve_session_db_path()`, nunca pelo módulo em si, pelo
   mesmo motivo de `ActionProcessor.run_batch` receber `execute_fn`/
@@ -466,7 +466,7 @@ mesmo contrato de confiança que `click_tool` já tem.
 `SchedulerStore` é uma cópia estrutural de `SessionStore` (mesma
 disciplina: nunca importa `wx`/`config`/`globalVars`, conexão-por-chamada,
 `busy_timeout=2000`) guardando uma tabela `scheduled_tasks` **no mesmo
-arquivo** `operadorIA_sessions.db` — duas classes de store, duas tabelas,
+arquivo** `ElizIA_sessions.db` — duas classes de store, duas tabelas,
 um arquivo, contenção coberta pelo mesmo `busy_timeout` já usado.
 
 `TaskScheduler` (`scheduler.py`) é só o timer+polling, propositalmente
