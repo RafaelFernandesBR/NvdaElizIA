@@ -8,7 +8,10 @@ on:
 jobs:
   unit-tests:
     name: Run Unit Tests
-    runs-on: ubuntu-latest
+    # Os testes carregam o SDK vendorizado em addon/globalPlugins/operadorIA/lib/,
+    # que inclui binarios Windows (_sqlite3.pyd, sqlite3.dll, _pydantic_core*.pyd,
+    # _cffi_backend*.pyd) - nao importam em Linux/macOS.
+    runs-on: windows-latest
 
     steps:
       - name: Checkout repository
@@ -22,5 +25,8 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Run test suite via unittest
-        run: uv run python -m unittest discover -s tests -v
+      - name: Run test suite
+        # Testes standalone do operadorIA (sem unittest.TestCase, ver tests/README.md):
+        # tests/run_all.py roda tudo exceto test_real_api_integration.py (que depende
+        # de rede e de uma gemini_api_key configurada, opt-in).
+        run: uv run python tests/run_all.py

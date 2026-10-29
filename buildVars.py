@@ -13,33 +13,35 @@ from site_scons.site_tools.NVDATool.utils import _
 # Add-on information variables
 addon_info = AddonInfo(
 	# add-on Name/identifier, internal for NVDA
-	addon_name="addonTemplate",
+	addon_name="operadorIA",
 	# Add-on summary/title, usually the user visible name of the add-on
 	# Translators: Summary/title for this add-on
 	# to be shown on installation and add-on information found in add-on store
-	addon_summary=_("Add-on user visible name"),
+	addon_summary=_("ElizIA Visual"),
 	# Add-on description
 	# Translators: Long description to be shown for this add-on on add-on information from add-on store
-	addon_description=_("""Description for the add-on.
-It can span multiple lines."""),
+	addon_description=_("""Controla o Windows usando IA e visão computacional baseado em screenshots"""),
 	# version
-	addon_version="x.y",
+	addon_version="1.8.0",
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version to be shown in the add-on store
-	addon_changelog=_("""Changelog for the add-on version.
-It can span multiple lines."""),
+	addon_changelog=_("""Agendamento de tarefas (schedule_task_tool) com confirmação sonora e janela
+de graça cancelável antes de disparar. Novas ferramentas de apoio: abrir
+programas (app_tool), perguntar ao usuário em meio à automação
+(ask_user_tool) e executar comandos de shell com confirmação explícita
+obrigatória (shell_tool, desligada por padrão)."""),
 	# Author(s)
-	addon_author="name <name@domain.com>",
+	addon_author="Marco <marcorafaeldemelo16@gmail.com>",
 	# URL for the add-on documentation support
-	addon_url=None,
+	addon_url="https://github.com/RafaelFernandesBR/NvdaElizIA",
 	# URL for the add-on repository where the source code can be found
-	addon_sourceURL=None,
+	addon_sourceURL="https://github.com/RafaelFernandesBR/NvdaElizIA",
 	# Documentation file name
 	addon_docFileName="readme.html",
 	# Minimum NVDA version supported (e.g. "2019.3.0", minor version is optional)
-	addon_minimumNVDAVersion=None,
+	addon_minimumNVDAVersion="2026.1",
 	# Last NVDA version supported/tested (e.g. "2024.4.0", ideally more recent than minimum version)
-	addon_lastTestedNVDAVersion=None,
+	addon_lastTestedNVDAVersion="2026.4",
 	# Add-on update channel (default is None, denoting stable releases,
 	# and for development releases, use "dev".)
 	# Do not change unless you know what you are doing!
@@ -58,7 +60,7 @@ It can span multiple lines."""),
 # pythonSources = ["addon/globalPlugins/*.py"]
 # For more information on SCons Glob expressions please take a look at:
 # https://scons.org/doc/production/HTML/scons-user/apd.html
-pythonSources: list[str] = []
+pythonSources: list[str] = ["addon/globalPlugins/operadorIA/*.py"]
 
 # Files that contain strings for translation. Usually your python sources
 i18nSources: list[str] = pythonSources + ["buildVars.py"]
@@ -73,7 +75,7 @@ excludedFiles: list[str] = []
 # If your add-on is written in a language other than english, modify this variable.
 # For example, set baseLanguage to "es" if your add-on is primarily written in spanish.
 # You must also edit .gitignore file to specify base language files to be ignored.
-baseLanguage: str = "en"
+baseLanguage: str = "pt_BR"
 
 # Markdown extensions for add-on documentation
 # Most add-ons do not require additional Markdown extensions.

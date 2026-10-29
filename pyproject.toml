@@ -3,11 +3,11 @@ requires = ["setuptools~=80.9", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "addonTemplate"
+name = "NvdaElizIA"
 dynamic = ["version"]
-description = "NVDA add-on template"
+description = "ElizIA Visual - addon NVDA que controla o Windows via comandos em linguagem natural usando a API de visão do Google Gemini"
 maintainers = [
-	{name = "NV Access", email = "info@nvaccess.org"},
+	{name = "Marco", email = "marcorafaeldemelo16@gmail.com"},
 ]
 requires-python = ">=3.13,<3.14"
 classifiers = [
@@ -24,7 +24,7 @@ license-files = ["COPYING.txt"]
 # build, translate, or lint the add-on. They are declared as PEP 735 dependency groups.
 dependencies = []
 [project.urls]
-Repository = "https://github.com/nvaccess/addonTemplate"
+Repository = "https://github.com/RafaelFernandesBR/NvdaElizIA"
 
 # PEP 735 dependency groups. `uv sync` installs the `dev` group by default, which
 # pulls in every tool needed to build, translate, and lint the add-on.
@@ -87,6 +87,9 @@ exclude = [
 	".venv",
 	"buildVars.py",
 	"tests",
+	# Codigo do addon em si e seu SDK vendorizado: mantido como esta
+	# (indentacao por espaco), nao reformatado/relintado por este template.
+	"addon",
 ]
 
 [tool.ruff.format]
@@ -124,8 +127,9 @@ exclude = [
 	"__pycache__",
 	".venv",
 	"site_scons",
-	".github/scripts",
 	"tests",
+	# Codigo do addon em si: nao lintado em modo strict por este template.
+	"addon",
 	# Pylance forcibly complains without these:
 	"node_modules",
 	"**/.*",

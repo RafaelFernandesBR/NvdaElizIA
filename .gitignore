@@ -1,6 +1,7 @@
 addon/doc/*.css
-addon/doc/en/
+addon/doc/pt_BR/
 /addon/COPYING.txt
+.venv/
 *_docHandler.py
 *.html
 manifest.ini

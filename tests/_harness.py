@@ -2,7 +2,8 @@
 """
 Harness compartilhado pros testes standalone do operadorIA — carrega
 módulos do addon FORA do NVDA, sem precisar instalar nada (usa a SDK
-bundled em globalPlugins/operadorIA/lib/) e sem precisar do NVDA rodando.
+bundled em addon/globalPlugins/operadorIA/lib/) e sem precisar do NVDA
+rodando.
 
 `lib/` é inserido no INÍCIO do sys.path (`insert(0, ...)`, não `append`) —
 isso significa que módulos vendorizados ali (ex: `sqlite3`, que a build de
@@ -32,7 +33,9 @@ import os
 import sys
 import types as _pytypes
 
-ADDON_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "globalPlugins", "operadorIA")
+ADDON_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "addon", "globalPlugins", "operadorIA"
+)
 
 _LIB_DIR = os.path.join(ADDON_DIR, "lib")
 if _LIB_DIR not in sys.path:
