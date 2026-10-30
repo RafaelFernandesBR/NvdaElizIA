@@ -192,6 +192,16 @@ class SettingsPanel(gui.settingsDialogs.SettingsPanel):
 		)
 		sizer.Add(self.askUserTimeoutSpinCtrl, 0, wx.EXPAND | wx.ALL, 5)
 
+		longWaitLabel = wx.StaticText(
+			box, label=_("Maximum pause per in-task wait (long_wait_tool, 10-600 sec):")
+		)
+		sizer.Add(longWaitLabel, 0, wx.ALL, 5)
+		self.longWaitMaxSpinCtrl = wx.SpinCtrl(box, min=10, max=600)
+		self.longWaitMaxSpinCtrl.SetValue(
+			self._load_config_value("long_wait_max_seconds", addon_config.DEFAULT_LONG_WAIT_MAX_SECONDS)
+		)
+		sizer.Add(self.longWaitMaxSpinCtrl, 0, wx.EXPAND | wx.ALL, 5)
+
 		self.enableShellToolCheck = wx.CheckBox(box, label=_("Allow the AI to run terminal commands (shell_tool)"))
 		self.enableShellToolCheck.SetValue(bool(self._load_config_value("enable_shell_tool", False)))
 		sizer.Add(self.enableShellToolCheck, 0, wx.ALL, 5)
@@ -278,6 +288,7 @@ class SettingsPanel(gui.settingsDialogs.SettingsPanel):
 		config.conf[addon_config.CONFIG_SECTION]["scheduler_check_interval"] = self.schedulerCheckIntervalSpinCtrl.GetValue()
 		config.conf[addon_config.CONFIG_SECTION]["scheduler_confirm_grace_seconds"] = self.schedulerGraceSpinCtrl.GetValue()
 		config.conf[addon_config.CONFIG_SECTION]["ask_user_timeout_seconds"] = self.askUserTimeoutSpinCtrl.GetValue()
+		config.conf[addon_config.CONFIG_SECTION]["long_wait_max_seconds"] = self.longWaitMaxSpinCtrl.GetValue()
 		config.conf[addon_config.CONFIG_SECTION]["enable_shell_tool"] = self.enableShellToolCheck.GetValue()
 		config.conf[addon_config.CONFIG_SECTION]["shell_command_timeout_seconds"] = self.shellTimeoutSpinCtrl.GetValue()
 
@@ -291,6 +302,7 @@ class SettingsPanel(gui.settingsDialogs.SettingsPanel):
 			f"scheduler_check_interval={self.schedulerCheckIntervalSpinCtrl.GetValue()} "
 			f"scheduler_confirm_grace_seconds={self.schedulerGraceSpinCtrl.GetValue()} "
 			f"ask_user_timeout_seconds={self.askUserTimeoutSpinCtrl.GetValue()} "
+			f"long_wait_max_seconds={self.longWaitMaxSpinCtrl.GetValue()} "
 			f"enable_shell_tool={self.enableShellToolCheck.GetValue()} "
 			f"shell_command_timeout_seconds={self.shellTimeoutSpinCtrl.GetValue()}"
 		)

@@ -211,6 +211,80 @@ def test_ask_user_tool_plus_other_tool_rejected():
     print("test_ask_user_tool_plus_other_tool_rejected OK")
 
 
+def test_long_wait_tool_alone_sets_awaiting_wait_seconds():
+    AP._consecutive_long_waits = 0
+    p = AP.process_function_calls([fc("long_wait_tool", {"seconds": 90})], 1920, 1080)
+    assert p.awaiting_wait_seconds == 90
+    assert p.is_finished is False
+    assert p.items[0].kind == "skip" and p.items[0].response is None
+    print("test_long_wait_tool_alone_sets_awaiting_wait_seconds OK")
+
+
+def test_long_wait_tool_plus_other_tool_rejected():
+    AP._consecutive_long_waits = 0
+    p = AP.process_function_calls(
+        [fc("long_wait_tool", {"seconds": 30}), fc("click_tool", {"x": 1, "y": 2})], 1920, 1080
+    )
+    assert p.awaiting_wait_seconds is None
+    assert all(it.kind == "skip" and it.response["success"] is False for it in p.items)
+    print("test_long_wait_tool_plus_other_tool_rejected OK")
+
+
+def test_long_wait_tool_consecutive_calls_capped():
+    AP._consecutive_long_waits = 0
+    for _ in range(addon_config.MAX_CONSECUTIVE_LONG_WAITS):
+        p = AP.process_function_calls([fc("long_wait_tool", {"seconds": 10})], 1920, 1080)
+        assert p.awaiting_wait_seconds == 10
+
+    p_over_limit = AP.process_function_calls([fc("long_wait_tool", {"seconds": 10})], 1920, 1080)
+    assert p_over_limit.awaiting_wait_seconds is None
+    assert p_over_limit.items[0].response["success"] is False
+    assert "schedule_task_tool" in p_over_limit.items[0].response["error"]
+
+    # Regressão: o teto NUNCA deve se autozerar ao disparar — senão a IA
+    # ganharia outras MAX_CONSECUTIVE_LONG_WAITS esperas de graça só por
+    # chamar long_wait_tool isoladamente de novo, e o teto nunca limitaria
+    # de verdade o tempo total de espera (só o "ritmo").
+    for _ in range(3):
+        p_still_capped = AP.process_function_calls([fc("long_wait_tool", {"seconds": 10})], 1920, 1080)
+        assert p_still_capped.awaiting_wait_seconds is None
+        assert p_still_capped.items[0].response["success"] is False
+    print("test_long_wait_tool_consecutive_calls_capped OK")
+
+
+def test_long_wait_tool_resets_consecutive_counter_after_other_tool_call():
+    AP._consecutive_long_waits = 0
+    for _ in range(addon_config.MAX_CONSECUTIVE_LONG_WAITS):
+        AP.process_function_calls([fc("long_wait_tool", {"seconds": 10})], 1920, 1080)
+
+    # Uma chamada que NÃO é long_wait_tool reseta o contador.
+    AP.process_function_calls([fc("click_tool", {"x": 1, "y": 2})], 1920, 1080)
+
+    p = AP.process_function_calls([fc("long_wait_tool", {"seconds": 10})], 1920, 1080)
+    assert p.awaiting_wait_seconds == 10
+    print("test_long_wait_tool_resets_consecutive_counter_after_other_tool_call OK")
+
+
+def test_long_wait_tool_normalizes_seconds_to_float():
+    AP._consecutive_long_waits = 0
+    # validate_args só confere que é convertível via float() — process_function_calls
+    # precisa normalizar o valor cru (poderia ser uma string "90.5" vinda da IA),
+    # nunca propagar como está, senão int(...) mais adiante quebra com ValueError.
+    p = AP.process_function_calls([fc("long_wait_tool", {"seconds": "90.5"})], 1920, 1080)
+    assert p.awaiting_wait_seconds == 90.5
+    assert isinstance(p.awaiting_wait_seconds, float)
+    print("test_long_wait_tool_normalizes_seconds_to_float OK")
+
+
+def test_long_wait_tool_never_populates_last_actions():
+    AP._consecutive_long_waits = 0
+    AP._last_actions = []
+    for _ in range(5):
+        AP.process_function_calls([fc("long_wait_tool", {"seconds": 5})], 1920, 1080)
+    assert AP._last_actions == []
+    print("test_long_wait_tool_never_populates_last_actions OK")
+
+
 def test_launch_app_and_shell_command_have_distinct_signatures():
     notepad = AP._build_action_info("launch_app", {"app_name": "notepad"}, 1920, 1080)
     calc = AP._build_action_info("launch_app", {"app_name": "calc"}, 1920, 1080)
@@ -260,6 +334,12 @@ if __name__ == "__main__":
     test_record_note_tool_resolved_as_support_tool()
     test_ask_user_tool_alone_sets_awaiting_question()
     test_ask_user_tool_plus_other_tool_rejected()
+    test_long_wait_tool_alone_sets_awaiting_wait_seconds()
+    test_long_wait_tool_plus_other_tool_rejected()
+    test_long_wait_tool_consecutive_calls_capped()
+    test_long_wait_tool_resets_consecutive_counter_after_other_tool_call()
+    test_long_wait_tool_normalizes_seconds_to_float()
+    test_long_wait_tool_never_populates_last_actions()
     test_launch_app_and_shell_command_have_distinct_signatures()
     test_support_items_never_trip_circuit_breaker_in_run_batch()
     print("\nTODOS OS TESTES PASSARAM")

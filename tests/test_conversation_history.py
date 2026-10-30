@@ -160,6 +160,21 @@ def test_record_step_handles_unresolved_item_without_crashing():
     print("test_record_step_handles_unresolved_item_without_crashing OK")
 
 
+def test_record_step_summarizes_successful_long_wait_tool_as_ok_not_ignored():
+    # long_wait_tool é kind="skip" (resolvida no nível do BatchPlan, como
+    # ask_user_tool), mas com sucesso — sem um ramo explícito pra isso em
+    # _summarize_batch_item, cairia no fallback "ignorado: sem detalhes" e a
+    # IA acharia, turnos depois, que a espera falhou ou foi pulada.
+    ch = utils.ConversationHistory()
+    item = BatchItem("long_wait_tool", None, "skip")
+    item.response = {"success": True, "message": "Waited 90 seconds."}
+    ch.record_step([item], "Aguardando 90 segundos antes de verificar de novo...")
+    log_text = ch.history_log_text()
+    assert "ok:" in log_text and "Waited 90 seconds" in log_text
+    assert "ignorado" not in log_text
+    print("test_record_step_summarizes_successful_long_wait_tool_as_ok_not_ignored OK")
+
+
 def test_to_dict_from_dict_roundtrip_without_model_content():
     ch = utils.ConversationHistory()
     ch.set_task_text("Tarefa: V")
@@ -310,6 +325,7 @@ if __name__ == "__main__":
     test_done_tool_or_loop_break_never_leaves_orphan_function_call()
     test_clear_resets_everything()
     test_record_step_handles_unresolved_item_without_crashing()
+    test_record_step_summarizes_successful_long_wait_tool_as_ok_not_ignored()
     test_to_dict_from_dict_roundtrip_without_model_content()
     test_to_dict_from_dict_roundtrip_preserves_thought_signature()
     test_from_dict_then_build_messages_for_api_behaves_like_live_history()

@@ -136,6 +136,10 @@ DEFAULT_SCHEDULER_CHECK_INTERVAL = 30
 DEFAULT_SCHEDULER_CONFIRM_GRACE_SECONDS = 20
 DEFAULT_ASK_USER_TIMEOUT_SECONDS = 120
 DEFAULT_SHELL_COMMAND_TIMEOUT_SECONDS = 15
+# Teto por chamada de long_wait_tool — mesma faixa de ask_user_timeout_seconds,
+# já que ambos representam "por quanto tempo é razoável pausar esta automação
+# no meio de uma tarefa" (ver _run_ai_loop/action_processor.py).
+DEFAULT_LONG_WAIT_MAX_SECONDS = 120
 # Segundos desde a última tecla/clique (GetLastInputInfo) abaixo dos quais o
 # fire-time gate adia o disparo pro próximo tick, em vez de interromper uma
 # rajada de teclas ativa — mitigação, não substitui o aviso+janela de graça.
@@ -173,6 +177,14 @@ MAX_SCREENSHOT_DIMENSION = 1568
 # --- Action Processor
 MAX_ACTION_HISTORY = 5
 DEFAULT_SCROLL_AMOUNT = 3
+# Chamadas consecutivas de long_wait_tool aceitas antes de forçar a IA a agir
+# diferente (ver ActionProcessor._consecutive_long_waits). Não configurável
+# pelo painel de propósito (é uma guarda interna, não uma config de
+# performance, mesmo nível de MAX_NOTES/LOOP_DETECTION_THRESHOLD) — sem isso,
+# uma automação com max_turns=300 e long_wait_max_seconds=600 no teto do
+# usuário poderia ficar esperando por dezenas de horas, já que esta tool
+# nunca passa pelo circuit breaker normal de loop (is_loop_detected).
+MAX_CONSECUTIVE_LONG_WAITS = 5
 # Quantas ações físicas a IA pode mandar em um único turno. O lote é
 # interrompido antes disso se uma ação falhar ou a tela mudar no meio
 # (ver _run_ai_loop em __init__.py) — mesmo padrão do multi_act() do
@@ -207,8 +219,9 @@ CONTEXT:
 
 YOUR TOOLS (never plain text — always call a tool):
 click_tool, right_click_tool, double_click_tool, type_tool, keyboard_tool,
-scroll_tool, wait_tool, app_tool, schedule_task_tool, list_scheduled_tasks_tool,
-cancel_scheduled_task_tool, ask_user_tool, record_note_tool, shell_tool, done_tool.
+scroll_tool, wait_tool, long_wait_tool, app_tool, schedule_task_tool,
+list_scheduled_tasks_tool, cancel_scheduled_task_tool, ask_user_tool,
+record_note_tool, shell_tool, done_tool.
 Full parameter schemas are declared as native tools — this is only the behavior
 that isn't obvious from the schema:
 - type_tool: set press_enter=true to submit right after typing (search bars,
@@ -221,6 +234,19 @@ that isn't obvious from the schema:
   and appear to do nothing.
 - app_tool: prefer this over keyboard_tool("win+r") + type_tool to open a
   program by name — one call instead of three turns.
+- Choosing between wait_tool / long_wait_tool / schedule_task_tool: wait_tool
+  is for a few seconds (page still loading, nothing to click yet). For a
+  background process that takes longer (a build, upload, export, report
+  generation) use long_wait_tool(seconds) instead — it pauses THIS SAME task
+  for up to a few minutes, keeping all your history/notes intact, and you
+  WILL be called again afterward to check. Never call it more than a handful
+  of times in a row without the state changing — if it keeps rejecting you
+  with a wait-limit error, that process is taking longer than an in-session
+  wait is worth: switch to schedule_task_tool to check back later instead
+  (or finish with done_tool if you have enough information already). Use
+  schedule_task_tool directly, not long_wait_tool, whenever the wait itself
+  is the point (minutes/hours/days away, or the user might close NVDA before
+  then) — never call it together with another tool.
 - schedule_task_tool: use when the user asks for something at a FUTURE time
   ("remind me to X at 3pm", "do Y in 10 minutes") or when you judge an action
   should happen later instead of now. Compute `run_at` yourself from the

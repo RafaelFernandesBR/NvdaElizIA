@@ -40,6 +40,22 @@ msgstr "Ignorado: limite de %(limit)d ações por turno excedido."
 msgid "Support function not available in this context."
 msgstr "Função de apoio não disponível neste contexto."
 
+#: addon\globalPlugins\operadorIA\action_processor.py:406
+#, python-format
+msgid ""
+"Wait limit reached (%(limit)d consecutive calls) — act now, finish with "
+"done_tool, or use schedule_task_tool to check back later instead of "
+"waiting again."
+msgstr ""
+"Limite de espera atingido (%(limit)d chamadas consecutivas) — aja agora, "
+"conclua com done_tool, ou use schedule_task_tool pra checar mais tarde em "
+"vez de esperar de novo."
+
+#: addon\globalPlugins\operadorIA\action_processor.py:417
+#, python-format
+msgid "Waiting %(seconds)d seconds before checking again..."
+msgstr "Aguardando %(seconds)d segundos antes de verificar de novo..."
+
 #: addon\globalPlugins\operadorIA\action_processor.py:425
 #, python-format
 msgid "Sending shortcut %s"
@@ -91,6 +107,16 @@ msgid ""
 msgstr ""
 "direction inválido para scroll_tool: %(direction)r (esperado 'up' ou "
 "'down')"
+
+#: addon\globalPlugins\operadorIA\action_tools.py:423
+#, python-format
+msgid "Invalid seconds for long_wait_tool: %(value)r"
+msgstr "seconds inválido para long_wait_tool: %(value)r"
+
+#: addon\globalPlugins\operadorIA\action_tools.py:425
+#, python-format
+msgid "seconds must be greater than zero, received %(value)r."
+msgstr "seconds precisa ser maior que zero, recebido %(value)r."
 
 #: addon\globalPlugins\operadorIA\action_tools.py:338
 #, python-format
@@ -528,6 +554,10 @@ msgstr "Tempo de aviso antes de rodar uma tarefa agendada (5-120 seg):"
 #: addon\globalPlugins\operadorIA\settings.py:186
 msgid "Maximum wait time for a user response (ask_user_tool, 10-600 sec):"
 msgstr "Tempo máximo de espera por resposta do usuário (ask_user_tool, 10-600 seg):"
+
+#: addon\globalPlugins\operadorIA\settings.py:196
+msgid "Maximum pause per in-task wait (long_wait_tool, 10-600 sec):"
+msgstr "Pausa máxima por espera dentro da tarefa (long_wait_tool, 10-600 seg):"
 
 #: addon\globalPlugins\operadorIA\settings.py:195
 msgid "Allow the AI to run terminal commands (shell_tool)"

@@ -33,8 +33,8 @@ propósito: é o único teste que gasta cota da API e depende de rede.
 
 | Arquivo | O que testa | Precisa de rede? |
 |---|---|---|
-| `test_action_tools.py` | Schema das tools (`action_tools.py`) e `validate_args` — inclusive `record_note_tool` e os parâmetros de recorrência de `schedule_task_tool`/`done_tool` | Não |
-| `test_action_processor.py` | Planejamento de lote (`BatchPlan`/`BatchItem`) e circuit breaker de loop — inclusive `BatchPlan.changed`/`result_data`/`stop_recurrence` e `record_note_tool` como tool "support" | Não |
+| `test_action_tools.py` | Schema das tools (`action_tools.py`) e `validate_args` — inclusive `record_note_tool`, `long_wait_tool` e os parâmetros de recorrência de `schedule_task_tool`/`done_tool` | Não |
+| `test_action_processor.py` | Planejamento de lote (`BatchPlan`/`BatchItem`) e circuit breaker de loop — inclusive `BatchPlan.changed`/`result_data`/`stop_recurrence`, `record_note_tool` como tool "support", e `long_wait_tool` (`awaiting_wait_seconds`, teto de chamadas consecutivas, nunca populando `_last_actions`) | Não |
 | `test_execute_batch.py` | `ActionProcessor.run_batch` — abort do lote em falha/mudança de tela/cancelamento (`should_cancel`, NVDA+Shift+C) | Não |
 | `test_conversation_history.py` | `ConversationHistory` — payload limitado, janela do log, notas nunca janeladas (`record_note`/`notes_text`), sem function_call órfã, serialização `to_dict`/`from_dict` | Não |
 | `test_screen_capture.py` | Downscale de screenshot (`_maybe_downscale`) | Não |

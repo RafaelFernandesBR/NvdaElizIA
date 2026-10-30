@@ -440,6 +440,48 @@ nunca trava pra sempre; no timeout, fecha o diálogo remotamente
 `done_tool(success=False)`. A resposta obtida vira o `function_response` do
 próximo turno, exatamente como qualquer outro item resolvido.
 
+### `long_wait_tool`: pausa longa que nunca aciona o circuit breaker, por desenho
+
+Problema de origem (investigado antes de implementar, não descoberto depois):
+se `long_wait_tool` fosse um `kind="execute"` comum, como o `wait_tool`
+original, o padrão de uso esperado — "espera, verifica, nada mudou ainda,
+espera de novo" — dispararia `is_loop_detected` exatamente na 3ª espera
+consecutiva (`LOOP_DETECTION_THRESHOLD=3`), matando a automação inteira.
+Piorando: `ActionInfo.signature()` não tem ramo pra `"wait"` (cai no
+fallback genérico, mesmo risco de colisão descrito na seção "`kind="support"`"
+acima), então nem variar `seconds` entre chamadas ajudaria.
+
+A correção é a mesma receita de `ask_user_tool`: tratar no nível do
+`BatchPlan`, nunca `kind="execute"`/`"support"`, nunca passar por
+`run_batch`/`is_loop_detected`/hash de tela. Novo campo
+`BatchPlan.awaiting_wait_seconds` (default `None`), mesma regra de
+exclusividade das outras três tools de nível-`BatchPlan` (nunca combinada
+com outra tool no turno). Quando presente, `_run_ai_loop` pula
+`_execute_batch` inteiramente e faz
+`self._cancel_event.wait(timeout=wait_seconds)` — uma ÚNICA chamada
+bloqueante que resolve dois problemas de uma vez: nunca passa pelo caminho
+que aciona o circuit breaker, e é interrompida quase instantaneamente por
+`NVDA+Shift+C` (`threading.Event.wait(timeout=N)` retorna `True`
+IMEDIATAMENTE se outra thread sinalizar o evento, sem precisar de loop
+manual de polling — diferente de um `time.sleep(N)` só, que deixaria o
+cancelamento preso até o sleep inteiro acabar, como ainda acontece hoje no
+`wait_tool` original de ≤10s).
+
+Bypassar o circuit breaker de propósito abre uma lacuna nova: nada mais
+impede a IA de chamar esta tool indefinidamente (`max_turns` até 300 ×
+`long_wait_max_seconds` até 600s = dezenas de horas, em tese). A guarda é
+um contador de classe separado, `ActionProcessor._consecutive_long_waits`
+(mesmo padrão de `_last_actions`, resetado nos mesmos 3 pontos de
+`__init__.py` que já resetam aquele e `_cancel_event`): ao atingir
+`addon_config.MAX_CONSECUTIVE_LONG_WAITS` (constante interna, não exposta
+no painel — é uma guarda de desenho, não uma config de performance), a
+próxima chamada é rejeitada com um erro explícito pedindo pra IA agir
+diferente (concluir com `done_tool`, ou trocar pra `schedule_task_tool` se
+a espera for genuinamente de longo prazo) — nunca aceita silenciosamente
+mais uma espera. A fala do turno (`display_text`) acontece ANTES do
+`.wait(...)`, não depois, igual ao fluxo normal de qualquer turno — o
+usuário ouve "Aguardando N segundos..." antes do silêncio.
+
 ### `shell_tool`: confirmação obrigatória, nunca no planejador puro
 
 Diferente das tools "support", `shell_tool` passa por `kind="execute"`
@@ -887,3 +929,16 @@ pipeline de principal fim-a-fim, rodar manualmente com `NVDA+Shift+R`:
     registrada num turno inicial continua aparecendo no prompt (seção
     "📌 NOTAS IMPORTANTES") em turnos bem depois de ter saído do log
     textual janelado.
+21. **`long_wait_tool`**: pedir algo que plausivelmente leve a IA a chamar
+    esta tool (ex: "espere cerca de 1 minuto e verifique se X terminou").
+    Confirmar que a fala do turno acontece ANTES do silêncio, não depois, e
+    que o histórico/notas continuam intactos no turno seguinte (sem
+    recomeçar a tarefa). Pressionar `NVDA+Shift+C` durante a espera —
+    confirmar que para quase imediatamente (não só depois do tempo total
+    configurado em `long_wait_max_seconds`) e o desfecho é "cancelado", não
+    "falha". Forçar `MAX_CONSECUTIVE_LONG_WAITS` esperas consecutivas (ex:
+    apontar pra algo que nunca termina visualmente) — confirmar que a IA
+    recebe a mensagem de teto pedindo pra agir diferente, e NUNCA a
+    mensagem do circuit breaker normal ("a mesma ação repetida sem mudança
+    de tela") — confirma que esta tool realmente nunca aciona aquele
+    caminho.

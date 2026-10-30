@@ -82,6 +82,7 @@ confspec = {
 	"scheduler_confirm_grace_seconds": "integer(default=20, min=5, max=120)",
 	"ask_user_timeout_seconds": "integer(default=120, min=10, max=600)",
 	"shell_command_timeout_seconds": "integer(default=15, min=1, max=120)",
+	"long_wait_max_seconds": "integer(default=120, min=10, max=600)",
 	"enable_shell_tool": "boolean(default=False)",
 }
 config.conf.spec[addon_config.CONFIG_SECTION] = confspec
@@ -372,6 +373,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         self.conversation_history.clear()
         self._speech_history.clear()
         ActionProcessor._last_actions = []
+        ActionProcessor._consecutive_long_waits = 0
         self._cancel_event.clear()
 
         if self.chat_dialog:
@@ -441,6 +443,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         })
         self._speech_history.clear()
         ActionProcessor._last_actions = []  # mesmo reset usado em _on_new_question
+        ActionProcessor._consecutive_long_waits = 0
         self._cancel_event.clear()
 
         wx.CallAfter(self._open_chat_dialog_for_resumed_session, record)
@@ -1094,6 +1097,34 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                     self._autosave_session()
                     continue
 
+                if plan.awaiting_wait_seconds is not None:
+                    # long_wait_tool: pausa a MESMA automação (histórico/notas
+                    # intactos) por até long_wait_max_seconds, interrompível
+                    # quase instantaneamente por NVDA+Shift+C via
+                    # threading.Event.wait(timeout=...) — nunca passa por
+                    # _execute_batch/run_batch, então nunca conta pro circuit
+                    # breaker de loop (ver ActionProcessor._consecutive_long_waits
+                    # pro limite de chamadas consecutivas, que é separado e
+                    # mais restrito).
+                    wait_max = config.conf[addon_config.CONFIG_SECTION]["long_wait_max_seconds"]
+                    wait_seconds = min(max(int(plan.awaiting_wait_seconds), 1), wait_max)
+                    wx.CallAfter(ui.message, clean_markdown(display_text))
+                    if self._cancel_event.wait(timeout=wait_seconds):
+                        task_cancelled = True
+                        last_display_text = self._mark_cancelled()
+                        break
+
+                    # Nunca passa por ui.message/plan.explanation (só function_response/log,
+                    # como os erros de action_executor.py) — por isso não usa _() (ver
+                    # convenção de i18n em CLAUDE.md).
+                    plan.items[0].response = {"success": True, "message": "Waited %d seconds." % wait_seconds}
+                    self.conversation_history.record_step(plan.items, display_text)
+                    pending_items = plan.items
+                    if turn_result.model_content is not None:
+                        self.conversation_history.set_last_model_content(turn_result.model_content)
+                    self._autosave_session()
+                    continue
+
                 wx.CallAfter(ui.message, clean_markdown(display_text))
 
                 loop_broken = self._execute_batch(plan.items, hashlib.md5(img_base64.encode()).hexdigest())
@@ -1229,6 +1260,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 wx.CallAfter(ui.message, _("%s is already running") % addon_config.ADDON_NAME)
                 return
             ActionProcessor._last_actions = []
+            ActionProcessor._consecutive_long_waits = 0
             # Mesmo reset de _begin_new_automation — essencial aqui: uma
             # pergunta de continuação NUNCA passa por _begin_new_automation,
             # então sem isso um cancelamento (NVDA+Shift+C) de uma chamada

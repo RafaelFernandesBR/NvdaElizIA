@@ -192,6 +192,31 @@ def test_validate_args_done_tool_accepts_recurring_optional_fields():
     print("test_validate_args_done_tool_accepts_recurring_optional_fields OK")
 
 
+def test_validate_args_long_wait_tool_missing_seconds():
+    err = action_tools.validate_args("long_wait_tool", {})
+    assert err and "seconds" in err
+    print("test_validate_args_long_wait_tool_missing_seconds OK")
+
+
+def test_validate_args_long_wait_tool_rejects_non_positive_seconds():
+    err_zero = action_tools.validate_args("long_wait_tool", {"seconds": 0})
+    assert err_zero and "seconds" in err_zero
+    err_negative = action_tools.validate_args("long_wait_tool", {"seconds": -10})
+    assert err_negative and "seconds" in err_negative
+    print("test_validate_args_long_wait_tool_rejects_non_positive_seconds OK")
+
+
+def test_validate_args_long_wait_tool_rejects_non_numeric_seconds():
+    err = action_tools.validate_args("long_wait_tool", {"seconds": "logo"})
+    assert err and "seconds" in err
+    print("test_validate_args_long_wait_tool_rejects_non_numeric_seconds OK")
+
+
+def test_validate_args_long_wait_tool_accepts_valid_seconds():
+    assert action_tools.validate_args("long_wait_tool", {"seconds": 90}) is None
+    print("test_validate_args_long_wait_tool_accepts_valid_seconds OK")
+
+
 if __name__ == "__main__":
     test_all_tools_registered()
     test_shell_tool_excluded_by_default()
@@ -213,4 +238,8 @@ if __name__ == "__main__":
     test_validate_args_schedule_task_max_occurrences_rejects_non_positive()
     test_validate_args_schedule_task_recurrence_until_requires_recurrence_and_future()
     test_validate_args_done_tool_accepts_recurring_optional_fields()
+    test_validate_args_long_wait_tool_missing_seconds()
+    test_validate_args_long_wait_tool_rejects_non_positive_seconds()
+    test_validate_args_long_wait_tool_rejects_non_numeric_seconds()
+    test_validate_args_long_wait_tool_accepts_valid_seconds()
     print("\nTODOS OS TESTES PASSARAM")

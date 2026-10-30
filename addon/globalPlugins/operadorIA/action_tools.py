@@ -106,6 +106,25 @@ WAIT_TOOL = types.FunctionDeclaration(
     ),
 )
 
+LONG_WAIT_TOOL = types.FunctionDeclaration(
+    name="long_wait_tool",
+    description=(
+        "Pausa esta automação por até alguns minutos antes de olhar a tela de novo, "
+        "mantendo intacto todo o histórico/notas já acumulados — use pra esperar um "
+        "processo de fundo terminar (ex: build, upload, exportação, geração de relatório) "
+        "quando wait_tool (até 10s) é curto demais. Diferente de schedule_task_tool: NÃO "
+        "termina esta automação nem cria uma nova depois — é a MESMA tarefa, só mais "
+        "tarde. Use schedule_task_tool em vez desta se a espera for de muitos minutos/"
+        "horas, ou se o usuário puder fechar o NVDA nesse meio tempo. Nunca combine com "
+        "outra tool no mesmo turno."
+    ),
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={"seconds": _prop(types.Type.INTEGER, "Segundos a esperar antes de verificar de novo.")},
+        required=["seconds"],
+    ),
+)
+
 SCHEDULE_TASK_TOOL = types.FunctionDeclaration(
     name="schedule_task_tool",
     description=(
@@ -289,7 +308,7 @@ RECORD_NOTE_TOOL = types.FunctionDeclaration(
 
 ALL_TOOLS = [
     CLICK_TOOL, RIGHT_CLICK_TOOL, DOUBLE_CLICK_TOOL,
-    TYPE_TOOL, KEYBOARD_TOOL, SCROLL_TOOL, WAIT_TOOL,
+    TYPE_TOOL, KEYBOARD_TOOL, SCROLL_TOOL, WAIT_TOOL, LONG_WAIT_TOOL,
     SCHEDULE_TASK_TOOL, LIST_SCHEDULED_TASKS_TOOL, CANCEL_SCHEDULED_TASK_TOOL,
     APP_TOOL, ASK_USER_TOOL, RECORD_NOTE_TOOL, DONE_TOOL,
 ]
@@ -309,6 +328,9 @@ SHELL_TOOLS = [SHELL_TOOL]
 # trata ask_user_tool no nível do BatchPlan (como done_tool), não como BatchItem
 # "execute"; a entrada existe só pra fechar o invariante "toda tool registrada
 # tem um action_type" (ver tests/test_action_tools.py).
+# "long_wait": mesma situação de "ask_user" — long_wait_tool é tratada no nível do
+# BatchPlan (ver BatchPlan.awaiting_wait_seconds/process_function_calls), nunca
+# como BatchItem "execute"/"support"; nunca passa por run_batch/is_loop_detected.
 TOOL_NAME_TO_ACTION_TYPE = {
     "click_tool": "click",
     "right_click_tool": "right_click",
@@ -317,6 +339,7 @@ TOOL_NAME_TO_ACTION_TYPE = {
     "keyboard_tool": "keyboard",
     "scroll_tool": "scroll",
     "wait_tool": "wait",
+    "long_wait_tool": "long_wait",
     "schedule_task_tool": "support",
     "list_scheduled_tasks_tool": "support",
     "cancel_scheduled_task_tool": "support",
@@ -335,6 +358,7 @@ REQUIRED_ARGS_BY_TOOL = {
     "keyboard_tool": ["keys"],
     "scroll_tool": ["direction"],
     "wait_tool": [],
+    "long_wait_tool": ["seconds"],
     "schedule_task_tool": ["command", "run_at", "title"],
     "list_scheduled_tasks_tool": [],
     "cancel_scheduled_task_tool": ["task_id"],
@@ -390,6 +414,15 @@ def validate_args(tool_name, args):
         return _("Invalid direction for scroll_tool: %(direction)r (expected 'up' or 'down')") % {
             "direction": args.get("direction"),
         }
+
+    if tool_name == "long_wait_tool":
+        seconds_raw = args.get("seconds")
+        try:
+            seconds_value = float(seconds_raw)
+        except (TypeError, ValueError):
+            return _("Invalid seconds for long_wait_tool: %(value)r") % {"value": seconds_raw}
+        if seconds_value <= 0:
+            return _("seconds must be greater than zero, received %(value)r.") % {"value": seconds_raw}
 
     if tool_name == "schedule_task_tool":
         run_at_raw = args.get("run_at")

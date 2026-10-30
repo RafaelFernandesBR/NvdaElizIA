@@ -34,6 +34,10 @@ Todos os atalhos podem ser remapeados em **Preferências > Gestos de entrada**, 
 - Clicar, clicar com o botão direito, clique duplo, digitar texto, pressionar teclas,
   rolar a tela e esperar a tela carregar.
 - Abrir programas pelo nome.
+- Pausar por mais tempo (até alguns minutos) no meio de uma tarefa, pra esperar algo
+  rodando em segundo plano terminar (ex: um build, upload ou exportação) sem perder o que
+  já foi feito — diferente de agendar, não cria uma tarefa nova nem espera você chamar de
+  novo: é a mesma automação, só retomada mais tarde.
 - Agendar uma tarefa para rodar num horário futuro — com aviso sonoro e uma janela de
   tempo cancelável antes de disparar de verdade, nunca silenciosamente.
 - Monitorar algo que se repete ao longo do tempo (ex: "veja o preço dessa passagem 3

@@ -131,12 +131,23 @@ class BatchPlan(NamedTuple):
     changed: Optional[bool] = None
     result_data: Optional[str] = None
     stop_recurrence: bool = False
+    # Preenchido só quando a IA chama long_wait_tool (sozinha, sem outra tool
+    # no turno) — sinaliza pro _run_ai_loop pausar por N segundos
+    # (interrompível por NVDA+Shift+C) antes do próximo turno, sem executar
+    # nenhum BatchItem. None no caso comum (nenhuma espera longa pendente).
+    awaiting_wait_seconds: Optional[float] = None
 
 
 class ActionProcessor:
     """Processa as function_calls nativas da IA e extrai ações"""
 
     _last_actions = []
+    # Chamadas consecutivas aceitas de long_wait_tool — guarda independente do
+    # circuit breaker normal (is_loop_detected), já que esta tool NUNCA passa
+    # por run_batch/_last_actions (ver process_function_calls). Sem isso, uma
+    # automação com max_turns=300 e long_wait_max_seconds=600 poderia ficar
+    # esperando por dezenas de horas sem nenhum outro limite entrar em ação.
+    _consecutive_long_waits = 0
 
     @staticmethod
     def _scale_coordinates(x, y, screen_w, screen_h):
@@ -286,12 +297,19 @@ class ActionProcessor:
         Política:
         - Nenhuma function_call: anômalo (mode=ANY deveria sempre retornar uma);
           não executa nada, não finaliza, pede retry no próximo turno.
-        - done_tool/ask_user_tool junto de outra ferramenta: rejeita todas,
-          pede retry limpo (mesma regra de exclusividade pras duas).
+        - done_tool/ask_user_tool/long_wait_tool junto de outra ferramenta:
+          rejeita todas, pede retry limpo (mesma regra de exclusividade pras três).
         - Só done_tool: tarefa concluída, sem ação física.
         - Só ask_user_tool: BatchPlan.awaiting_question preenchido, sem
           ação física — cabe ao chamador (NVDA/wx-aware) pausar e obter a
           resposta do usuário de forma síncrona, fora desta função pura.
+        - Só long_wait_tool: BatchPlan.awaiting_wait_seconds preenchido, sem
+          ação física — cabe ao chamador pausar (interrompível) por esse
+          tempo antes do próximo turno. Nunca passa por run_batch/
+          is_loop_detected (diferente de wait_tool, que é kind="execute"
+          normal); um contador de classe separado (_consecutive_long_waits)
+          evita espera consecutiva sem fim, já que o circuit breaker normal
+          nunca chega a ver esta tool.
         - Tool "support" (schedule_task_tool e afins — ver action_tools.
           TOOL_NAME_TO_ACTION_TYPE): resolvida JÁ AQUI via o handler
           correspondente em `support_handlers` (nunca mexe na tela, nunca
@@ -321,9 +339,22 @@ class ActionProcessor:
 
         done_calls = [fc for fc in function_calls if fc.name == "done_tool"]
         ask_user_calls = [fc for fc in function_calls if fc.name == "ask_user_tool"]
+        long_wait_calls = [fc for fc in function_calls if fc.name == "long_wait_tool"]
 
-        if (done_calls or ask_user_calls) and len(function_calls) > 1:
-            exclusive_name = "done_tool" if done_calls else "ask_user_tool"
+        if not long_wait_calls:
+            # Zera sempre que o turno NÃO é uma chamada isolada de
+            # long_wait_tool — mesmo princípio do reset de _last_actions em
+            # is_loop_detected quando a tela muda: só conta repetições
+            # CONSECUTIVAS, nunca o total acumulado da tarefa inteira.
+            ActionProcessor._consecutive_long_waits = 0
+
+        if (done_calls or ask_user_calls or long_wait_calls) and len(function_calls) > 1:
+            if done_calls:
+                exclusive_name = "done_tool"
+            elif ask_user_calls:
+                exclusive_name = "ask_user_tool"
+            else:
+                exclusive_name = "long_wait_tool"
             explanation = _("%s cannot be called together with another tool in the same turn.") % exclusive_name
             items = [
                 BatchItem(fc.name, fc.id, "skip", {"success": False, "error": explanation})
@@ -361,6 +392,40 @@ class ActionProcessor:
             question = args.get("question", "")
             item = BatchItem(fc.name, fc.id, "skip")  # .response preenchido depois, com a resposta do usuário
             return BatchPlan([item], False, question, awaiting_question=question)
+
+        if long_wait_calls:
+            fc = long_wait_calls[0]
+            args = fc.args or {}
+            error = action_tools.validate_args(fc.name, args)
+            if error:
+                item = BatchItem(fc.name, fc.id, "skip", {"success": False, "error": error})
+                return BatchPlan([item], False, error)
+
+            if ActionProcessor._consecutive_long_waits >= addon_config.MAX_CONSECUTIVE_LONG_WAITS:
+                # NUNCA zera o contador aqui — fazer isso devolveria outras
+                # MAX_CONSECUTIVE_LONG_WAITS chamadas de graça na próxima vez
+                # que a IA chamasse long_wait_tool de novo isoladamente,
+                # anulando o próprio propósito do teto (ciclo "N aceitas + 1
+                # rejeitada" se repetindo pra sempre). Só o reset no topo da
+                # função (quando o turno NÃO é um long_wait_tool isolado) tira
+                # a IA deste estado.
+                error = _(
+                    "Wait limit reached (%(limit)d consecutive calls) — act now, finish with "
+                    "done_tool, or use schedule_task_tool to check back later instead of "
+                    "waiting again."
+                ) % {"limit": addon_config.MAX_CONSECUTIVE_LONG_WAITS}
+                item = BatchItem(fc.name, fc.id, "skip", {"success": False, "error": error})
+                return BatchPlan([item], False, error)
+
+            ActionProcessor._consecutive_long_waits += 1
+            # float(), não o valor cru — validate_args só CONFERE que é
+            # convertível, não transforma; sem isso, awaiting_wait_seconds
+            # poderia carregar uma string ("90.5") e quebrar os int(...) em
+            # process_function_calls/_run_ai_loop com um ValueError.
+            seconds = float(args.get("seconds"))
+            item = BatchItem(fc.name, fc.id, "skip")  # .response preenchido depois, após a espera real
+            explanation = _("Waiting %(seconds)d seconds before checking again...") % {"seconds": int(seconds)}
+            return BatchPlan([item], False, explanation, awaiting_wait_seconds=seconds)
 
         items = []
         explanations = []

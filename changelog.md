@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.10.0
+
+- Suporte a tarefas longas: `NVDA+Shift+C` cancela uma automação em execução a qualquer
+  momento (terceiro desfecho, distinto de sucesso/falha); o teto de turnos por tarefa subiu
+  de 50 para 300; `record_note_tool` deixa a IA anotar fatos importantes que nunca saem do
+  contexto, mesmo em tarefas com dezenas de turnos; e `schedule_task_tool` ganhou
+  monitoramento recorrente (`recurrence_minutes`/`max_occurrences`/`recurrence_until`), com
+  o próprio scheduler contando as repetições — ex.: "veja o preço dessa passagem 3 vezes
+  nos próximos 30 minutos e me avise se mudar".
+- Nova ferramenta `long_wait_tool`: pausa a mesma automação por até alguns minutos (ex.:
+  esperar um build/upload terminar) sem perder histórico ou notas e sem criar uma tarefa
+  agendada nova — interrompível quase na hora pelo mesmo `NVDA+Shift+C`, com um limite de
+  chamadas consecutivas pra nunca ficar esperando indefinidamente.
+
 ## 1.9.0
 
 - Suporte a tradução (i18n): a interface do addon (falas, diálogos de chat/sessões/agendamento,

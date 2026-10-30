@@ -159,6 +159,13 @@ def _summarize_batch_item(item):
             # process_function_calls/BatchPlan.awaiting_question) — aqui só
             # registra a pergunta feita e a resposta recebida do usuário.
             return f"{item.name} -> perguntou ao usuário, resposta: {resp['answer']!r}"
+        if resp.get("success"):
+            # long_wait_tool: outro caso resolvido fora do run_batch normal
+            # (ver BatchPlan.awaiting_wait_seconds) — sem este ramo, uma
+            # espera bem-sucedida cairia no fallback "ignorado: sem
+            # detalhes" abaixo, fazendo a IA achar, turnos depois, que a
+            # espera falhou ou foi pulada.
+            return f"{item.name} -> ok: {resp.get('message') or 'concluído'}"
         return f"{item.name} -> ignorado: {resp.get('error', 'sem detalhes') if resp else 'sem detalhes'}"
 
     args_desc = _summarize_action_info(item.action_info) if item.action_info else item.name
