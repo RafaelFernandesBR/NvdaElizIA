@@ -209,6 +209,23 @@ MAX_HISTORY_LOG_ITEMS = 8
 # a tool devolve um erro explícito em vez de aceitar silenciosamente.
 MAX_NOTES = 40
 
+# Quantos pares "Você"/{ADDON_NAME} da transcrição humana
+# (ConversationHistory._conversation_log) ficam visíveis pra IA (mesma janela
+# de MAX_HISTORY_LOG_ITEMS: primeiro par + "[... N omitidos ...]" + últimos
+# N). Cresce por PERGUNTA do usuário (1 chamada de _run_ai_loop = 2 entradas:
+# "Você" + resposta), não por turno — por isso o teto pode ser pequeno sem
+# descartar perguntas de continuação recentes.
+MAX_CONVERSATION_LOG_ITEMS = 8
+
+# Teto de caracteres por mensagem dentro de conversation_log_text() — ao
+# contrário de MAX_CONVERSATION_LOG_ITEMS (quantas mensagens), isso limita o
+# TAMANHO de cada uma. Sem isso, um summary de done_tool excepcionalmente
+# longo entraria por completo em lead_parts a cada turno, repetido em todas
+# as até MAX_CONVERSATION_LOG_ITEMS mensagens da janela — mesmo princípio de
+# _summarize_action_info truncando `type_tool.text` em 30 chars, só que pro
+# conteúdo da conversa em vez do log técnico de ações.
+MAX_CONVERSATION_MESSAGE_CHARS = 300
+
 # --- Prompt do Sistema
 AI_OPERATOR_PROMPT_TEMPLATE = """You are an automation assistant for blind users using NVDA.
 The user CANNOT SEE the screen - you are their EYES. Be precise and responsible.

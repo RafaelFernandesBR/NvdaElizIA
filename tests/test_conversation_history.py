@@ -81,6 +81,96 @@ def test_history_log_windowed_keeps_first_and_last():
     print("test_history_log_windowed_keeps_first_and_last OK")
 
 
+def test_conversation_log_windowed_keeps_first_and_last():
+    ch = utils.ConversationHistory()
+    ch.set_task_text("Tarefa: Y2")
+    for turn in range(1, 15):
+        ch.record_conversation_message("Você", f"pergunta {turn}")
+        ch.record_conversation_message(addon_config.ADDON_NAME, f"resposta {turn}")
+    text = ch.conversation_log_text()
+    lines = text.splitlines()
+    # Comparação EXATA (não "in"): "pergunta 1" é substring de "pergunta
+    # 12"/"13"/"14", que também estão na janela "recente" — "in" passaria
+    # mesmo se o primeiro par real tivesse sido descartado.
+    assert lines[1] == "Você: pergunta 1", "primeira pergunta deveria sempre aparecer, intacta"
+    assert lines[2] == f"{addon_config.ADDON_NAME}: resposta 1", "primeiro par inteiro, não só a pergunta"
+    assert "omitida" in text
+    assert "pergunta 14" in text, "pergunta mais recente deveria aparecer"
+    # Igual a history_log_text: o meio é descartado pela janela.
+    assert "pergunta 7" not in text
+    print("test_conversation_log_windowed_keeps_first_and_last OK")
+
+
+def test_conversation_log_text_pairs_by_sender_not_position():
+    # Cenário real: uma ocorrência de tarefa recorrente com
+    # notify_only_on_change nunca chama _show_result_in_chat quando
+    # changed=False (ver __init__.py:_finalize_scheduled_task), então só
+    # "Você" é gravado pra aquela ocorrência — nenhuma resposta. Se a sessão
+    # for retomada depois com uma nova pergunta, o log fica com duas
+    # entradas "Você" consecutivas. Pareamento por POSIÇÃO (par/ímpar)
+    # juntaria as duas perguntas como se fosse pergunta+resposta; por
+    # REMETENTE, cada uma fica isolada.
+    ch = utils.ConversationHistory()
+    ch.record_conversation_message("Você", "comando sem resposta registrada")
+    ch.record_conversation_message("Você", "pergunta de continuação depois de retomar")
+    ch.record_conversation_message(addon_config.ADDON_NAME, "resposta da continuação")
+
+    text = ch.conversation_log_text()
+    lines = text.splitlines()
+    # A 1ª pergunta forma um "par" de 1 linha só (sem resposta) — não deve
+    # aparecer colada com a 2ª pergunta como se fossem pergunta+resposta.
+    assert lines[1] == "Você: comando sem resposta registrada"
+    assert lines[2] == "Você: pergunta de continuação depois de retomar"
+    assert lines[3] == f"{addon_config.ADDON_NAME}: resposta da continuação"
+    print("test_conversation_log_text_pairs_by_sender_not_position OK")
+
+
+def test_conversation_log_text_truncates_long_messages():
+    ch = utils.ConversationHistory()
+    long_message = "x" * (addon_config.MAX_CONVERSATION_MESSAGE_CHARS + 50)
+    ch.record_conversation_message("Você", long_message)
+    text = ch.conversation_log_text()
+    assert long_message not in text, "mensagem longa demais não deveria entrar inteira"
+    kept = "x" * addon_config.MAX_CONVERSATION_MESSAGE_CHARS
+    assert f"Você: {kept}..." in text
+    print("test_conversation_log_text_truncates_long_messages OK")
+
+
+def test_build_messages_for_api_stays_bounded_with_all_fields_populated():
+    # Garante que incluir a transcrição da conversa não quebra o invariante
+    # O(1)/≤3 Content, mesmo com _task_text + conversation_log + log_entries
+    # + notes todos populados ao mesmo tempo.
+    ch = utils.ConversationHistory()
+    ch.set_task_text("Tarefa: tudo junto")
+    ch.record_conversation_message("Você", "pergunta inicial")
+    ch.record_conversation_message(addon_config.ADDON_NAME, "resposta inicial")
+    ch.record_step(make_batch(1))
+    ch.record_note("fato relevante")
+    ch.set_last_model_content(fake_model_content(1))
+
+    msgs = ch.build_messages_for_api([gt.Part(text="screenshot")])
+    assert len(msgs) <= 3
+    assert [m.role for m in msgs] == ["user", "model", "user"]
+    joined_text = "\n".join(p.text for p in msgs[0].parts if p.text)
+    assert "pergunta inicial" in joined_text
+    assert "fato relevante" in joined_text
+    print("test_build_messages_for_api_stays_bounded_with_all_fields_populated OK")
+
+
+def test_from_dict_then_build_messages_for_api_includes_restored_conversation_log():
+    live = utils.ConversationHistory()
+    live.set_task_text("Tarefa: retomada")
+    live.record_conversation_message("Você", "qual foi minha primeira mensagem?")
+    live.record_conversation_message(addon_config.ADDON_NAME, "resposta anterior")
+
+    restored = utils.ConversationHistory.from_dict(live.to_dict())
+    msgs = restored.build_messages_for_api([gt.Part(text="screenshot nova")])
+    joined_text = "\n".join(p.text for p in msgs[0].parts if p.text)
+    assert "qual foi minha primeira mensagem?" in joined_text
+    assert "resposta anterior" in joined_text
+    print("test_from_dict_then_build_messages_for_api_includes_restored_conversation_log OK")
+
+
 def test_done_tool_or_loop_break_never_leaves_orphan_function_call():
     ch = utils.ConversationHistory()
     ch.set_task_text("Tarefa: Z")
@@ -115,10 +205,19 @@ def test_record_conversation_message_and_conversation_log():
         {"sender": "Você", "message": "organize os itens por ordem alfabética"},
         {"sender": addon_config.ADDON_NAME, "message": "Os itens foram classificados por nome."},
     ]
-    # Garantia central: a transcrição humana nunca toca o que vai pra API.
+    # Garantia central (pós-fix): a transcrição humana AGORA entra no que vai
+    # pra API — sem ela, uma pergunta de continuação sobre a própria conversa
+    # ("qual foi minha primeira mensagem?") não tem como ter resposta
+    # correta, já que _task_text é substituído a cada chamada de
+    # _run_ai_loop (ver set_task_text). _log_entries continua vazio (nenhuma
+    # ação/record_step foi chamada aqui) — são campos independentes.
     assert ch.history_log_text() == ""
+    assert "organize os itens por ordem alfabética" in ch.conversation_log_text()
     msgs = ch.build_messages_for_api([gt.Part(text="screenshot")])
     assert len(msgs) == 1 and msgs[0].role == "user"
+    joined_text = "\n".join(p.text for p in msgs[0].parts if p.text)
+    assert "organize os itens por ordem alfabética" in joined_text
+    assert "Os itens foram classificados por nome." in joined_text
     print("test_record_conversation_message_and_conversation_log OK")
 
 
@@ -322,6 +421,11 @@ if __name__ == "__main__":
     test_turn0_no_model_content_single_content()
     test_payload_stays_bounded_across_turns()
     test_history_log_windowed_keeps_first_and_last()
+    test_conversation_log_windowed_keeps_first_and_last()
+    test_conversation_log_text_pairs_by_sender_not_position()
+    test_conversation_log_text_truncates_long_messages()
+    test_build_messages_for_api_stays_bounded_with_all_fields_populated()
+    test_from_dict_then_build_messages_for_api_includes_restored_conversation_log()
     test_done_tool_or_loop_break_never_leaves_orphan_function_call()
     test_clear_resets_everything()
     test_record_step_handles_unresolved_item_without_crashing()

@@ -169,15 +169,29 @@ Dois detalhes que só fazem sentido lendo o código com este contexto:
 - A ordem entre `_execute_batch` e `record_step` é proposital: primeiro
   executa (preenche `.response` de cada item), depois resume — resumir
   antes produziria uma linha de histórico sem saber o resultado real.
-- `set_last_model_content(None)` é chamado explicitamente nos dois casos
-  terminais (circuit breaker disparou, `done_tool` concluiu a tarefa) —
-  **nunca** nos outros. Isso existe pra corrigir um bug real que a
-  refatoração encontrou: se o `model_content` do turno (que contém a
-  function_call) fosse salvo incondicionalmente, um circuit breaker ou um
-  `done_tool` deixaria essa function_call sem resposta pendurada no
-  histórico — e uma pergunta de continuação depois (`_on_new_question`)
-  provavelmente faria a API rejeitar a chamada seguinte por function_call
-  sem function_response correspondente.
+- `set_last_model_content(None)` é zerado explicitamente antes de qualquer
+  saída de `_run_ai_loop` sem um próximo turno pra resolver a function_call
+  pendente. Dois mecanismos, não um só: (1) pontos de saída específicos
+  (cancelamento via `_mark_cancelled`, timeout de `ask_user_tool`, circuit
+  breaker `loop_broken`, `done_tool`) zeram e autosalvam na hora, porque já
+  têm um texto/decisão própria pra registrar junto; (2) um ponto único e
+  incondicional logo depois do `for turn in range(max_turns): ... else:`
+  zera de novo (idempotente se já era `None`) e autosalva, cobrindo todo
+  `break`/esgotamento de `max_turns` que NÃO tem tratamento próprio — captura
+  de tela falhou, erro da API Gemini — sem precisar duplicar a chamada em
+  cada ponto. O bloco `except Exception` externo tem seu próprio zeramento
+  (antes do `_show_result_in_chat` que roda depois via `wx.CallAfter` e
+  autosalva de novo), já que uma excepção pula direto pra lá sem passar pelo
+  ponto único. Isso existe pra corrigir um bug real: se o `model_content` do
+  turno (que contém a function_call) fosse salvo incondicionalmente, essa
+  function_call ficaria sem resposta pendurada no histórico persistido — e
+  uma sessão retomada depois (`_on_new_question`) provavelmente faria a API
+  rejeitar a chamada seguinte por function_call sem function_response
+  correspondente. O ponto único e o zeramento no `except` foram adicionados
+  depois dos pontos específicos, encontrados investigando um bug separado de
+  contexto perdido em perguntas de continuação (ver `_conversation_log` mais
+  abaixo) — a cobertura original deixava escapar exatamente a falha de
+  captura de tela e o erro de API.
 
 ## `utils.py` — `ConversationHistory`: histórico O(1) por turno
 
@@ -212,13 +226,22 @@ numa janela limitada (`agent_history_description`: primeiro item +
   modelo (`set_last_model_content`) — nunca mais que um.
 - `_conversation_log`: a transcrição HUMANA da conversa
   (`record_conversation_message(sender, message)`), pares
-  `{"sender": "Você"/{ADDON_NAME}, "message": ...}`. **Nunca** entra em
-  `build_messages_for_api`/`history_log_text` — não é contexto pra API,
-  existe só pra repopular o `OperatorChatDialog` ao retomar uma seção salva
-  (`GlobalPlugin._open_chat_dialog_for_resumed_session`). Não confundir com
-  `_log_entries` acima: essa confusão — mostrar o log técnico de ações como
-  se fosse a conversa — era exatamente um bug real já corrigido (o replay do
-  resume usava `_log_entries` com sender fixo `"Histórico"`).
+  `{"sender": "Você"/{ADDON_NAME}, "message": ...}`. Serve pra repopular o
+  `OperatorChatDialog` ao retomar uma seção salva
+  (`GlobalPlugin._open_chat_dialog_for_resumed_session`) E entra em
+  `build_messages_for_api` via `conversation_log_text()` (mesma janela de
+  `history_log_text()`: primeiro par + marcador de omissão + os mais
+  recentes, teto `addon_config.MAX_CONVERSATION_LOG_ITEMS`). Não confundir
+  com `_log_entries` acima: aquele é o resumo técnico de AÇÕES (cliques/
+  teclado), nunca a pergunta/resposta em si — sem `_conversation_log` no
+  contexto da API, uma pergunta de continuação como "qual foi minha primeira
+  mensagem?" não tinha como ter resposta correta, já que `_task_text` é
+  substituído a cada chamada de `_run_ai_loop` (ver `set_task_text`) e
+  `_log_entries` só registra ações, não o teor da conversa — bug real
+  corrigido (antes a transcrição ficava só na UI). Não confundir também com
+  o bug HISTÓRICO já corrigido antes deste: o replay do chat ao retomar usava
+  `_log_entries` com sender fixo `"Histórico"` em vez de `_conversation_log`
+  — um problema diferente, só na janela do chat, não no contexto da API.
 - `_notes` (adicionado com o suporte a tarefas longas, ver seção própria
   abaixo): fatos anotados pela IA via `record_note_tool`. Ao contrário de
   `_log_entries`, **nunca** é janelado — `notes_text()` sempre devolve a
@@ -231,10 +254,10 @@ máximo, 3 `Content`:
 
 ```
 turno 0 (ou depois de done_tool/circuit breaker):
-  [ Content(user, [task_text, log_text?] + current_user_parts) ]
+  [ Content(user, [task_text, conversation_text?, log_text?, notes_text?] + current_user_parts) ]
 
 turno N>=1 "no meio" de uma automação em curso:
-  [ Content(user, [task_text, log_text]),
+  [ Content(user, [task_text, conversation_text?, log_text?, notes_text?]),
     last_model_content,                     # role="model"
     Content(user, current_user_parts) ]     # function_response + screenshot ATUAL
 ```
@@ -327,11 +350,16 @@ memória (`_task_text`, `_log_entries`, `_last_model_content`,
   que o pydantic já serializa/desserializa como base64 sem encoder
   customizado.
 - **Autosave respeita o mesmo invariante de `set_last_model_content(None)`**
-  documentado na seção do `_run_ai_loop` acima: `GlobalPlugin._autosave_session()`
-  só é chamado DEPOIS que o valor final de `_last_model_content` do turno já
-  foi decidido (circuit breaker, `done_tool`, ou caminho normal) — nunca
-  entre essa decisão e o autosave, pra nunca persistir uma function_call
-  sem function_response possível.
+  documentado na seção do `_run_ai_loop` acima: todo `_autosave_session()` só
+  roda DEPOIS que o valor final de `_last_model_content` do turno já foi
+  decidido — seja num ponto de saída específico, no ponto único depois do
+  `for/else`, ou no `except Exception` externo — nunca entre essa decisão e
+  o autosave, pra nunca persistir uma function_call sem function_response
+  possível. A falha de captura de tela, o erro da API Gemini, o esgotamento
+  de `max_turns` e a excepção não tratada precisaram ganhar essa cobertura
+  (via o ponto único + o zeramento no `except`) — antes, uma sessão podia
+  ficar persistida com uma function_call órfã se a automação terminasse por
+  qualquer um desses motivos.
 - **Modo seguro do NVDA** (tela de login do Windows): `self.session_store`
   fica `None` nesse modo (mesma guarda de `globalVars.appArgs.secure` já
   usada pro `SettingsPanel`) — nenhum comando digitado na tela de login é

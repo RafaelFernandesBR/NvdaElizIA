@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.10.1
+
+- Corrige perda de contexto da conversa em perguntas de continuação (no mesmo chat ou ao
+  retomar uma seção com `NVDA+Shift+O`): a IA agora recebe a transcrição da conversa
+  anterior (perguntas e respostas), não só o comando mais recente — antes, perguntas
+  sobre a própria conversa (ex.: "qual foi minha primeira mensagem?") podiam receber
+  respostas confusas ou inventadas.
+- Corrige um caso raro em que uma automação interrompida por erro de rede ou por atingir
+  o limite de turnos podia deixar uma ação pendente de confirmação persistida, arriscando
+  confundir a IA numa sessão retomada depois.
+
 ## 1.10.0
 
 - Suporte a tarefas longas: `NVDA+Shift+C` cancela uma automação em execução a qualquer

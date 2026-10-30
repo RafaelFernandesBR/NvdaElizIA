@@ -189,11 +189,15 @@ class ConversationHistory:
         self._task_text = None
         self._log_entries = []
         self._last_model_content = None
-        # Transcrição HUMANA (Você / {ADDON_NAME}) — nunca lida por
-        # build_messages_for_api/history_log_text, não é contexto pra API.
-        # Existe só pra repopular o chat ao retomar uma seção salva. Não
-        # confundir com _log_entries: aquele é o resumo técnico de ações
-        # pra IA, nunca deveria aparecer na tela.
+        # Transcrição HUMANA (Você / {ADDON_NAME}) — repopula o chat ao
+        # retomar uma seção salva E (via conversation_log_text(), janelada)
+        # entra em build_messages_for_api: é a única cópia do que o usuário
+        # de fato perguntou/ouviu de volta, sem o que uma pergunta de
+        # continuação como "qual foi minha primeira mensagem?" não tem
+        # resposta possível (_task_text é substituído a cada chamada de
+        # _run_ai_loop, ver set_task_text). Não confundir com _log_entries:
+        # aquele é o resumo técnico de AÇÕES (cliques/teclado), nunca a
+        # pergunta/resposta em si.
         self._conversation_log = []
         # Fatos anotados via record_note_tool — ao contrário de
         # _log_entries, NUNCA janelado: sempre enviado por completo em
@@ -206,6 +210,21 @@ class ConversationHistory:
         Define/substitui a âncora da tarefa atual — sempre enviada, nunca é
         omitida pela janela do log. Chamar 1x no início de toda chamada a
         _run_ai_loop (sessão nova OU pergunta de continuação).
+
+        Decisão deliberada: isso SUBSTITUI o texto anterior (não acrescenta)
+        mesmo numa pergunta de continuação — _task_text representa "o
+        pedido/pergunta ATUAL", não a tarefa original da sessão. Isso é
+        seguro porque conversation_log_text() (ver build_messages_for_api)
+        carrega o fio completo das perguntas/respostas anteriores, incluindo
+        sempre a primeira — sem ela, substituir aqui perderia o contexto de
+        toda pergunta de continuação anterior.
+
+        Nota: o texto atual acaba viajando DUAS vezes no mesmo turno — aqui
+        (via _task_text) e de novo em _conversation_log (gravado separadamente
+        por record_conversation_message, ver __init__.py:_run_ai_loop) — já
+        que servem a propósitos distintos (âncora da tarefa ATUAL vs.
+        transcrição completa). Duplicação pequena e aceita de propósito, não
+        um descuido.
         """
         self._task_text = text
 
@@ -256,10 +275,80 @@ class ConversationHistory:
         """
         Registra uma linha da transcrição HUMANA da conversa (o que o
         usuário digitou/ouviu de volta) — sender costuma ser "Você" ou
-        addon_config.ADDON_NAME. Nunca usada pra montar o contexto da API;
-        serve só pra repopular o OperatorChatDialog ao retomar uma seção.
+        addon_config.ADDON_NAME. Usada tanto pra repopular o
+        OperatorChatDialog ao retomar uma seção quanto (via
+        conversation_log_text(), janelada) pra montar o contexto da API —
+        ver build_messages_for_api.
+
+        Nota de i18n: sender já chega traduzido no idioma da UI do NVDA no
+        momento da chamada (_("You") em vez de um literal fixo) porque o
+        mesmo valor também é exibido na tela do chat. Isso significa que o
+        rótulo enviado à API pode não estar no idioma de response_language —
+        aceito de propósito (o modelo não depende do idioma do rótulo pra
+        entender quem disse o quê) em vez de duplicar este campo em dois
+        formatos só para a etiqueta do remetente.
         """
         self._conversation_log.append({"sender": sender, "message": message})
+
+    def conversation_log_text(self):
+        """
+        Texto janelado da transcrição humana (mesma forma de
+        history_log_text(): primeiro par sempre mantido + marcador de
+        omissão + os mais recentes, limite
+        addon_config.MAX_CONVERSATION_LOG_ITEMS). "" se nada foi registrado
+        ainda. É o que permite a IA responder perguntas sobre a própria
+        conversa (ex: "qual foi minha primeira mensagem?") — ver
+        build_messages_for_api.
+
+        A janela opera em PARES (uma pergunta + a resposta correspondente),
+        nunca em linhas soltas — senão, com addon_config.MAX_CONVERSATION_LOG_ITEMS
+        par, o item mais antigo do bloco "recente" ficaria sendo só a
+        resposta, sem a pergunta correspondente visível antes dela.
+
+        O pareamento é por REMETENTE, não por posição par/ímpar: dois
+        registros consecutivos só formam um par se tiverem sender
+        DIFERENTE (pergunta seguida da resposta). Isso cobre o caso em que
+        uma pergunta nunca recebe resposta registrada nesta sessão (ex:
+        tarefa recorrente com notify_only_on_change e nenhuma mudança —
+        _show_result_in_chat, única chamada que grava a resposta, nunca
+        roda) e a sessão é retomada depois com uma pergunta de continuação:
+        pareamento por posição juntaria as duas perguntas consecutivas como
+        se fosse um par pergunta+resposta; por remetente, cada pergunta sem
+        resposta fica como um "par" de 1 linha só, preservando o
+        alinhamento de todos os pares seguintes.
+        """
+        if not self._conversation_log:
+            return ""
+
+        char_limit = addon_config.MAX_CONVERSATION_MESSAGE_CHARS
+        exchanges = []
+        i = 0
+        total_entries = len(self._conversation_log)
+        while i < total_entries:
+            current = self._conversation_log[i]
+            if i + 1 < total_entries and self._conversation_log[i + 1]["sender"] != current["sender"]:
+                pair = self._conversation_log[i:i + 2]
+                i += 2
+            else:
+                pair = [current]
+                i += 1
+            lines = []
+            for entry in pair:
+                message = entry["message"]
+                if len(message) > char_limit:
+                    message = message[:char_limit] + "..."
+                lines.append(f"{entry['sender']}: {message}")
+            exchanges.append("\n".join(lines))
+
+        total = len(exchanges)
+        limit = addon_config.MAX_CONVERSATION_LOG_ITEMS
+        if total > limit:
+            omitted = total - limit
+            recent_count = max(0, limit - 1)
+            recent = exchanges[-recent_count:] if recent_count else []
+            exchanges = [exchanges[0], f"[... {omitted} pergunta(s) anterior(es) omitida(s) ...]"] + recent
+
+        return "💬 CONVERSA ANTERIOR COM O USUÁRIO:\n" + "\n".join(exchanges)
 
     def conversation_log(self):
         """Cópia da transcrição humana registrada até agora."""
@@ -308,7 +397,10 @@ class ConversationHistory:
         """
         Monta `contents=` pra API, O(1) em imagens — só a screenshot do
         turno atual (dentro de `current_user_parts`) é enviada; passos
-        anteriores entram só como o texto de `history_log_text()`.
+        anteriores entram só como texto: a conversa (`conversation_log_text()`)
+        e o log de ações (`history_log_text()`), ambos janelados, mais as
+        notas (`notes_text()`) — essa, ao contrário das outras duas, NUNCA
+        janelada (ver docstring de `__init__`).
 
         Args:
             current_user_parts: list[types.Part] já montada pelo chamador
@@ -322,6 +414,9 @@ class ConversationHistory:
         lead_parts = []
         if self._task_text:
             lead_parts.append(types.Part(text=self._task_text))
+        conversation_text = self.conversation_log_text()
+        if conversation_text:
+            lead_parts.append(types.Part(text=conversation_text))
         log_text = self.history_log_text()
         if log_text:
             lead_parts.append(types.Part(text=log_text))

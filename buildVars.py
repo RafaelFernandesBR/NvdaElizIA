@@ -22,15 +22,16 @@ addon_info = AddonInfo(
 	# Translators: Long description to be shown for this add-on on add-on information from add-on store
 	addon_description=_("""Controla o Windows usando IA e visão computacional baseado em screenshots"""),
 	# version
-	addon_version="1.10.0",
+	addon_version="1.10.1",
 	# Brief changelog for this version
 	# Translators: what's new content for the add-on version to be shown in the add-on store
-	addon_changelog=_("""Suporte a tarefas longas: cancelar uma automação em execução
-(NVDA+Shift+C), teto de turnos elevado (até 300), notas que não se perdem em tarefas
-com muitos passos, e monitoramento recorrente (ex: "veja o preço 3x nos próximos 30
-minutos"). Nova ferramenta de pausa longa permite esperar um processo de fundo (build,
-upload) terminar sem perder o que já foi feito, como alternativa ao agendamento quando
-a espera é de minutos, não de horas."""),
+	addon_changelog=_("""Corrige perda de contexto da conversa em perguntas de continuação
+(no mesmo chat ou ao retomar uma seção com NVDA+Shift+O): a IA agora recebe a transcrição
+da conversa anterior, não só o comando mais recente, evitando respostas confusas ou
+inconsistentes quando o usuário faz várias perguntas na mesma conversa. Também corrige um
+caso raro em que uma automação interrompida por erro de rede ou por atingir o limite de
+turnos podia deixar uma ação pendente persistida, arriscando confundir a IA numa sessão
+retomada depois."""),
 	# Author(s)
 	addon_author="Marco <marcorafaeldemelo16@gmail.com>",
 	# URL for the add-on documentation support

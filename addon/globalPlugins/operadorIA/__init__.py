@@ -1175,6 +1175,18 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             else:
                 logger.warning(f"Loop encerrado por atingir max_turns ({max_turns}) sem concluir")
 
+            # Ponto único e incondicional: todo desfecho deste loop (break OU
+            # esgotamento de max_turns) é terminal — nunca há um próximo
+            # turno nesta chamada pra responder a uma function_call pendente
+            # (cancelamento, timeout de ask_user, circuit breaker e done_tool
+            # já zeram isso explicitamente mais acima; esta chamada cobre
+            # também os caminhos que não zeravam — falha de captura de tela
+            # e erro da API Gemini — sem precisar duplicar a lógica em cada
+            # break). set_last_model_content(None)/_autosave_session() num
+            # turno que já tinha zerado isso é um no-op seguro.
+            self.conversation_history.set_last_model_content(None)
+            self._autosave_session()
+
             logger.info(f"Loop de automação encerrado após {turn + 1} turno(s)")
             final_text = last_display_text or _("Operation completed.")
             should_announce = self._finalize_scheduled_task(
@@ -1195,6 +1207,13 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             logger.error(f"Exceção não tratada no loop de automação: {e}", exc_info=True)
             tones.beep(300, 250)
             error_text = _("Error: %s") % str(e)
+            # Mesmo motivo do ponto único depois do for/else acima: esta
+            # excepção pode ter interrompido o loop entre um autosave que já
+            # tinha um function_call pendente (turno normal, linhas
+            # 1168-1171) e o turno seguinte que resolveria. _show_result_in_chat
+            # abaixo chama _autosave_session() de novo — sem zerar aqui
+            # antes, persistiria essa function_call órfã.
+            self.conversation_history.set_last_model_content(None)
             wx.CallAfter(ui.message, error_text)
             self._finalize_scheduled_task(scheduled_task_id, False, error_text)
             wx.CallAfter(self._show_result_in_chat, command, error_text, steal_focus)
