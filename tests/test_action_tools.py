@@ -117,6 +117,81 @@ def test_validate_args_shell_tool_requires_command_and_reason():
     print("test_validate_args_shell_tool_requires_command_and_reason OK")
 
 
+def test_validate_args_record_note_tool():
+    assert action_tools.validate_args("record_note_tool", {"note": "preço R$450"}) is None
+    err = action_tools.validate_args("record_note_tool", {})
+    assert err and "note" in err
+    print("test_validate_args_record_note_tool OK")
+
+
+def test_validate_args_schedule_task_recurrence_minutes_optional_and_valid():
+    future = (datetime.now() + timedelta(days=1)).isoformat(timespec="seconds")
+    base = {"command": "x", "title": "X", "run_at": future}
+    # Sem recurrence_minutes (tarefa única) continua válido, como antes.
+    assert action_tools.validate_args("schedule_task_tool", base) is None
+    assert action_tools.validate_args("schedule_task_tool", {**base, "recurrence_minutes": 30}) is None
+    assert action_tools.validate_args("schedule_task_tool", {**base, "recurrence_minutes": 0}) is None
+    print("test_validate_args_schedule_task_recurrence_minutes_optional_and_valid OK")
+
+
+def test_validate_args_schedule_task_recurrence_minutes_rejects_non_positive():
+    future = (datetime.now() + timedelta(days=1)).isoformat(timespec="seconds")
+    base = {"command": "x", "title": "X", "run_at": future}
+    err = action_tools.validate_args("schedule_task_tool", {**base, "recurrence_minutes": -5})
+    assert err and "recurrence_minutes" in err
+    print("test_validate_args_schedule_task_recurrence_minutes_rejects_non_positive OK")
+
+
+def test_validate_args_schedule_task_max_occurrences_requires_recurrence():
+    future = (datetime.now() + timedelta(days=1)).isoformat(timespec="seconds")
+    base = {"command": "x", "title": "X", "run_at": future}
+    err = action_tools.validate_args("schedule_task_tool", {**base, "max_occurrences": 3})
+    assert err and "recurrence_minutes" in err
+    assert action_tools.validate_args(
+        "schedule_task_tool", {**base, "recurrence_minutes": 10, "max_occurrences": 3}
+    ) is None
+    print("test_validate_args_schedule_task_max_occurrences_requires_recurrence OK")
+
+
+def test_validate_args_schedule_task_max_occurrences_rejects_non_positive():
+    future = (datetime.now() + timedelta(days=1)).isoformat(timespec="seconds")
+    base = {"command": "x", "title": "X", "run_at": future, "recurrence_minutes": 10}
+    err = action_tools.validate_args("schedule_task_tool", {**base, "max_occurrences": 0})
+    assert err and "max_occurrences" in err
+    print("test_validate_args_schedule_task_max_occurrences_rejects_non_positive OK")
+
+
+def test_validate_args_schedule_task_recurrence_until_requires_recurrence_and_future():
+    future = (datetime.now() + timedelta(days=1)).isoformat(timespec="seconds")
+    far_future = (datetime.now() + timedelta(days=2)).isoformat(timespec="seconds")
+    base = {"command": "x", "title": "X", "run_at": future}
+
+    err_no_recurrence = action_tools.validate_args(
+        "schedule_task_tool", {**base, "recurrence_until": far_future}
+    )
+    assert err_no_recurrence and "recurrence_minutes" in err_no_recurrence
+
+    err_past = action_tools.validate_args(
+        "schedule_task_tool",
+        {**base, "recurrence_minutes": 10, "recurrence_until": "2000-01-01T00:00:00"},
+    )
+    assert err_past and "future" in err_past
+
+    assert action_tools.validate_args(
+        "schedule_task_tool", {**base, "recurrence_minutes": 10, "recurrence_until": far_future}
+    ) is None
+    print("test_validate_args_schedule_task_recurrence_until_requires_recurrence_and_future OK")
+
+
+def test_validate_args_done_tool_accepts_recurring_optional_fields():
+    base = {"summary": "preço verificado", "success": True}
+    assert action_tools.validate_args("done_tool", {**base, "changed": True, "result_data": "price=450"}) is None
+    assert action_tools.validate_args("done_tool", {**base, "changed": False, "stop_recurrence": True}) is None
+    # Sem nenhum dos campos opcionais, continua válido (tarefa comum).
+    assert action_tools.validate_args("done_tool", base) is None
+    print("test_validate_args_done_tool_accepts_recurring_optional_fields OK")
+
+
 if __name__ == "__main__":
     test_all_tools_registered()
     test_shell_tool_excluded_by_default()
@@ -131,4 +206,11 @@ if __name__ == "__main__":
     test_validate_args_new_support_tools()
     test_validate_args_app_tool_and_ask_user_tool()
     test_validate_args_shell_tool_requires_command_and_reason()
+    test_validate_args_record_note_tool()
+    test_validate_args_schedule_task_recurrence_minutes_optional_and_valid()
+    test_validate_args_schedule_task_recurrence_minutes_rejects_non_positive()
+    test_validate_args_schedule_task_max_occurrences_requires_recurrence()
+    test_validate_args_schedule_task_max_occurrences_rejects_non_positive()
+    test_validate_args_schedule_task_recurrence_until_requires_recurrence_and_future()
+    test_validate_args_done_tool_accepts_recurring_optional_fields()
     print("\nTODOS OS TESTES PASSARAM")

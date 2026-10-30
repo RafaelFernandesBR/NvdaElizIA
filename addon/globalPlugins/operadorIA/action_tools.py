@@ -113,7 +113,11 @@ SCHEDULE_TASK_TOOL = types.FunctionDeclaration(
         "precisar que o usuário peça de novo no horário. Use quando o usuário "
         "pedir algo pra um horário futuro (\"me lembra de X às 15h\", \"faça Y "
         "em 10 minutos\") ou quando você mesmo identificar, pelo contexto, que "
-        "uma ação deveria acontecer depois em vez de agora."
+        "uma ação deveria acontecer depois em vez de agora. Pra MONITORAMENTO "
+        "recorrente (ex: \"veja o preço 3 vezes nas próximas 2 horas\", "
+        "\"monitore esse link\"), use também recurrence_minutes/max_occurrences/"
+        "recurrence_until — nunca tente controlar a repetição sozinho chamando "
+        "esta tool de novo a cada verificação."
     ),
     parameters=types.Schema(
         type=types.Type.OBJECT,
@@ -124,10 +128,34 @@ SCHEDULE_TASK_TOOL = types.FunctionDeclaration(
             ),
             "run_at": _prop(
                 types.Type.STRING,
-                "Data e hora local no formato ISO 8601 'AAAA-MM-DDTHH:MM:SS' em que a tarefa deve rodar. "
-                "Calcule a partir da data/hora atual informada no contexto do sistema.",
+                "Data e hora local no formato ISO 8601 'AAAA-MM-DDTHH:MM:SS' em que a PRIMEIRA execução deve "
+                "rodar. Calcule a partir da data/hora atual informada no contexto do sistema.",
             ),
             "title": _prop(types.Type.STRING, "Descrição curta da tarefa, para exibir numa lista."),
+            "recurrence_minutes": _prop(
+                types.Type.INTEGER,
+                "Opcional. Se informado (>0), a tarefa se repete automaticamente a cada N minutos após cada "
+                "execução, em vez de rodar só uma vez — use pra monitoramento (preço, disponibilidade, "
+                "métricas de uma página). Omita ou mande 0 para uma tarefa única (padrão).",
+            ),
+            "notify_only_on_change": _prop(
+                types.Type.BOOLEAN,
+                "Opcional, só com recurrence_minutes. Se true, o usuário só é avisado do RESULTADO quando "
+                "done_tool indicar changed=true — checagens sem novidade ficam só registradas, sem "
+                "interromper o usuário. Padrão false (avisa o resultado sempre).",
+            ),
+            "max_occurrences": _prop(
+                types.Type.INTEGER,
+                "Opcional, só com recurrence_minutes. Número máximo de repetições antes de parar "
+                "automaticamente (ex: 3 pra \"verifique 3 vezes\"). Sem isso, repete indefinidamente até "
+                "ser cancelada ou até done_tool pedir stop_recurrence=true.",
+            ),
+            "recurrence_until": _prop(
+                types.Type.STRING,
+                "Opcional, só com recurrence_minutes. Data/hora ISO 8601 limite após a qual a recorrência "
+                "para de se repetir (ex: \"nos próximos 30 minutos\" = agora + 30min). Combine com "
+                "max_occurrences quando o usuário der as duas informações (\"3 vezes em 30 minutos\").",
+            ),
         },
         required=["command", "run_at", "title"],
     ),
@@ -219,8 +247,43 @@ DONE_TOOL = types.FunctionDeclaration(
                 "visualmente); false se você está parando sem conseguir "
                 "completá-la.",
             ),
+            "changed": _prop(
+                types.Type.BOOLEAN,
+                "Só relevante se esta execução for uma verificação RECORRENTE (agendada com "
+                "recurrence_minutes — o próprio contexto da tarefa avisa quando é o caso, junto do "
+                "resultado da checagem anterior, se houver). true se algo mudou de forma relevante desde a "
+                "checagem anterior (ex: preço caiu); false se não há novidade. Ignorado em tarefas comuns.",
+            ),
+            "result_data": _prop(
+                types.Type.STRING,
+                "Só relevante em verificação RECORRENTE. Snapshot conciso do estado atual, pra comparar na "
+                "PRÓXIMA checagem (ex: \"price=450 BRL\", \"likes=1234\"). Ignorado em tarefas comuns.",
+            ),
+            "stop_recurrence": _prop(
+                types.Type.BOOLEAN,
+                "Só relevante em verificação RECORRENTE. true quando a condição que justificava monitorar "
+                "foi satisfeita (ex: preço já caiu abaixo do limite pedido) — a tarefa recorrente para de "
+                "vez, em vez de agendar a próxima checagem. Padrão false. Ignorado em tarefas comuns.",
+            ),
         },
         required=["summary", "success"],
+    ),
+)
+
+RECORD_NOTE_TOOL = types.FunctionDeclaration(
+    name="record_note_tool",
+    description=(
+        "Anota um fato importante que não pode ser esquecido numa tarefa longa, com muitos passos (ex: um "
+        "preço encontrado num site já comparado, uma opção descartada e por quê, um dado coletado num site "
+        "que você vai precisar comparar com outro mais adiante). Diferente da sua explicação normal de cada "
+        "turno, que eventualmente sai do seu histórico visível, esta nota NUNCA é esquecida, mesmo em "
+        "tarefas com dezenas de turnos — use quando a informação importar além dos próximos passos "
+        "imediatos. Não serve pra narrar passos comuns, só fatos que valem a pena preservar."
+    ),
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        properties={"note": _prop(types.Type.STRING, "Fato curto e objetivo a lembrar.")},
+        required=["note"],
     ),
 )
 
@@ -228,7 +291,7 @@ ALL_TOOLS = [
     CLICK_TOOL, RIGHT_CLICK_TOOL, DOUBLE_CLICK_TOOL,
     TYPE_TOOL, KEYBOARD_TOOL, SCROLL_TOOL, WAIT_TOOL,
     SCHEDULE_TASK_TOOL, LIST_SCHEDULED_TASKS_TOOL, CANCEL_SCHEDULED_TASK_TOOL,
-    APP_TOOL, ASK_USER_TOOL, DONE_TOOL,
+    APP_TOOL, ASK_USER_TOOL, RECORD_NOTE_TOOL, DONE_TOOL,
 ]
 
 # Tool separada porque só entra na lista enviada ao Gemini se o usuário
@@ -259,6 +322,7 @@ TOOL_NAME_TO_ACTION_TYPE = {
     "cancel_scheduled_task_tool": "support",
     "app_tool": "launch_app",
     "ask_user_tool": "ask_user",
+    "record_note_tool": "support",
     "shell_tool": "shell_command",
     "done_tool": "done",
 }
@@ -276,6 +340,7 @@ REQUIRED_ARGS_BY_TOOL = {
     "cancel_scheduled_task_tool": ["task_id"],
     "app_tool": ["app_name"],
     "ask_user_tool": ["question"],
+    "record_note_tool": ["note"],
     "shell_tool": ["command", "reason"],
     "done_tool": ["summary", "success"],
 }
@@ -342,5 +407,52 @@ def validate_args(tool_name, args):
             return _("run_at must be in the future, received %(run_at)r which has already passed (or is now).") % {
                 "run_at": run_at_raw,
             }
+
+        recurrence_minutes = args.get("recurrence_minutes")
+        has_recurrence = bool(recurrence_minutes)
+        if recurrence_minutes not in (None, 0):
+            try:
+                recurrence_minutes_value = float(recurrence_minutes)
+            except (TypeError, ValueError):
+                return _("Invalid recurrence_minutes for schedule_task_tool: %(value)r") % {
+                    "value": recurrence_minutes,
+                }
+            if recurrence_minutes_value <= 0:
+                return _("recurrence_minutes must be greater than zero, received %(value)r.") % {
+                    "value": recurrence_minutes,
+                }
+
+        max_occurrences = args.get("max_occurrences")
+        recurrence_until_raw = args.get("recurrence_until")
+        if not has_recurrence and (max_occurrences is not None or recurrence_until_raw):
+            return _(
+                "max_occurrences and recurrence_until are only valid together with recurrence_minutes."
+            )
+
+        if max_occurrences is not None:
+            try:
+                max_occurrences_value = int(max_occurrences)
+            except (TypeError, ValueError):
+                return _("Invalid max_occurrences for schedule_task_tool: %(value)r") % {
+                    "value": max_occurrences,
+                }
+            if max_occurrences_value <= 0:
+                return _("max_occurrences must be greater than zero, received %(value)r.") % {
+                    "value": max_occurrences,
+                }
+
+        if recurrence_until_raw:
+            try:
+                recurrence_until = datetime.fromisoformat(recurrence_until_raw).replace(tzinfo=None)
+            except (TypeError, ValueError):
+                return _(
+                    "Invalid recurrence_until for schedule_task_tool: %(value)r "
+                    "(expected ISO 8601 'YYYY-MM-DDTHH:MM:SS')"
+                ) % {"value": recurrence_until_raw}
+            if recurrence_until <= datetime.now():
+                return _(
+                    "recurrence_until must be in the future, received %(value)r which has already passed "
+                    "(or is now)."
+                ) % {"value": recurrence_until_raw}
 
     return None

@@ -24,6 +24,7 @@ tarefa concluída.
 | `NVDA+Shift+R` | Abre um diálogo para você descrever o que quer fazer e inicia a automação. |
 | `NVDA+Shift+O` | Abre a lista de sessões salvas (retomar, renomear ou excluir conversas anteriores). |
 | `NVDA+Shift+A` | Abre o gerenciador de tarefas agendadas (cancelar/excluir agendamentos pendentes). |
+| `NVDA+Shift+C` | Cancela a automação que estiver em execução no momento. |
 
 Todos os atalhos podem ser remapeados em **Preferências > Gestos de entrada**, categoria
 "ElizIA Visual".
@@ -35,13 +36,22 @@ Todos os atalhos podem ser remapeados em **Preferências > Gestos de entrada**, 
 - Abrir programas pelo nome.
 - Agendar uma tarefa para rodar num horário futuro — com aviso sonoro e uma janela de
   tempo cancelável antes de disparar de verdade, nunca silenciosamente.
+- Monitorar algo que se repete ao longo do tempo (ex: "veja o preço dessa passagem 3
+  vezes nas próximas 2 horas e me avise se mudar") — a cada checagem a IA compara com o
+  resultado anterior; se você pedir pra só avisar quando algo mudar, uma checagem sem
+  novidade só é registrada, sem interromper você. Cada checagem ainda assume a tela de
+  verdade (o aviso sonoro de "vou começar agora" antes de cada disparo continua valendo),
+  só a notificação do RESULTADO é que pode ficar silenciosa.
+- Em tarefas longas, com muitos passos, anotar fatos importantes (um preço encontrado,
+  uma opção já descartada) que não se perdem mesmo depois de muitos turnos.
 - Perguntar algo a você no meio de uma automação, quando precisar de uma decisão sua.
 - Executar um comando no `cmd.exe` — **desligado por padrão**; se habilitado nas
   configurações, qualquer comando ainda exige sua confirmação explícita antes de rodar.
 
 A automação sempre se recusa a continuar enquanto a Cortina de Tela do NVDA estiver
 ativa, e nunca aplica uma ação da IA que não reconheça ou valide — nesse caso ela devolve
-um erro para a IA tentar de novo.
+um erro para a IA tentar de novo. Uma automação em andamento pode ser interrompida a
+qualquer momento com `NVDA+Shift+C`.
 
 ## Configurações disponíveis
 

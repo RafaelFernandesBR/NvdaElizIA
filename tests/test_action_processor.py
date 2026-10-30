@@ -61,6 +61,28 @@ def test_done_without_success_arg_is_rejected():
     print("test_done_without_success_arg_is_rejected OK")
 
 
+def test_done_alone_without_recurring_fields_defaults_to_none_and_false():
+    p = AP.process_function_calls([fc("done_tool", {"summary": "ok", "success": True})], 1920, 1080)
+    assert p.changed is None
+    assert p.result_data is None
+    assert p.stop_recurrence is False
+    print("test_done_alone_without_recurring_fields_defaults_to_none_and_false OK")
+
+
+def test_done_alone_propagates_recurring_fields():
+    p = AP.process_function_calls(
+        [fc("done_tool", {
+            "summary": "preço verificado", "success": True,
+            "changed": True, "result_data": "price=450", "stop_recurrence": True,
+        })],
+        1920, 1080,
+    )
+    assert p.changed is True
+    assert p.result_data == "price=450"
+    assert p.stop_recurrence is True
+    print("test_done_alone_propagates_recurring_fields OK")
+
+
 def test_done_plus_other_tool_rejected():
     p = AP.process_function_calls(
         [fc("done_tool", {"summary": "x"}), fc("click_tool", {"x": 1, "y": 2})], 1920, 1080
@@ -156,6 +178,22 @@ def test_support_tool_can_batch_with_physical_action():
     print("test_support_tool_can_batch_with_physical_action OK")
 
 
+def test_record_note_tool_resolved_as_support_tool():
+    calls = [fc("record_note_tool", {"note": "preço R$450 no site X"})]
+    handler_calls = []
+
+    def fake_handler(args):
+        handler_calls.append(args["note"])
+        return {"success": True, "message": "Nota registrada."}
+
+    p = AP.process_function_calls(calls, 1920, 1080, support_handlers={"record_note_tool": fake_handler})
+    assert handler_calls == ["preço R$450 no site X"]
+    assert p.items[0].kind == "support"
+    assert p.items[0].response["success"] is True
+    assert p.is_finished is False
+    print("test_record_note_tool_resolved_as_support_tool OK")
+
+
 def test_ask_user_tool_alone_sets_awaiting_question():
     p = AP.process_function_calls([fc("ask_user_tool", {"question": "Qual delas?"})], 1920, 1080)
     assert p.awaiting_question == "Qual delas?"
@@ -208,6 +246,8 @@ if __name__ == "__main__":
     test_done_alone_finishes()
     test_done_alone_with_success_false()
     test_done_without_success_arg_is_rejected()
+    test_done_alone_without_recurring_fields_defaults_to_none_and_false()
+    test_done_alone_propagates_recurring_fields()
     test_done_plus_other_tool_rejected()
     test_batch_plans_multiple_executable_items()
     test_batch_truncated_beyond_max_actions_per_turn()
@@ -217,6 +257,7 @@ if __name__ == "__main__":
     test_support_tool_resolved_immediately_via_injected_handler()
     test_support_tool_without_handler_fails_gracefully()
     test_support_tool_can_batch_with_physical_action()
+    test_record_note_tool_resolved_as_support_tool()
     test_ask_user_tool_alone_sets_awaiting_question()
     test_ask_user_tool_plus_other_tool_rejected()
     test_launch_app_and_shell_command_have_distinct_signatures()

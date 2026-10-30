@@ -33,14 +33,14 @@ propósito: é o único teste que gasta cota da API e depende de rede.
 
 | Arquivo | O que testa | Precisa de rede? |
 |---|---|---|
-| `test_action_tools.py` | Schema das tools (`action_tools.py`) e `validate_args` | Não |
-| `test_action_processor.py` | Planejamento de lote (`BatchPlan`/`BatchItem`) e circuit breaker de loop | Não |
-| `test_execute_batch.py` | `ActionProcessor.run_batch` — abort do lote em falha/mudança de tela | Não |
-| `test_conversation_history.py` | `ConversationHistory` — payload limitado, janela do log, sem function_call órfã, serialização `to_dict`/`from_dict` | Não |
+| `test_action_tools.py` | Schema das tools (`action_tools.py`) e `validate_args` — inclusive `record_note_tool` e os parâmetros de recorrência de `schedule_task_tool`/`done_tool` | Não |
+| `test_action_processor.py` | Planejamento de lote (`BatchPlan`/`BatchItem`) e circuit breaker de loop — inclusive `BatchPlan.changed`/`result_data`/`stop_recurrence` e `record_note_tool` como tool "support" | Não |
+| `test_execute_batch.py` | `ActionProcessor.run_batch` — abort do lote em falha/mudança de tela/cancelamento (`should_cancel`, NVDA+Shift+C) | Não |
+| `test_conversation_history.py` | `ConversationHistory` — payload limitado, janela do log, notas nunca janeladas (`record_note`/`notes_text`), sem function_call órfã, serialização `to_dict`/`from_dict` | Não |
 | `test_screen_capture.py` | Downscale de screenshot (`_maybe_downscale`) | Não |
 | `test_screen_curtain.py` | Detecção da cortina de tela ativa (API nova `screenCurtain`, NVDA ≥ 2026.1, e API antiga `vision`, 2019.3–2025.3.x), fail-open em qualquer erro | Não |
-| `test_session_store.py` | `SessionStore` — CRUD de seções em SQLite, poda automática, `derive_title` | Não |
-| `test_scheduler_store.py` | `SchedulerStore` — CRUD de tarefas agendadas, `get_due_tasks`/`get_missed_tasks`, cancelamento | Não |
+| `test_session_store.py` | `SessionStore` — CRUD de seções em SQLite, poda automática, `derive_title`, migração aditiva de schema (`conversation_log_json`, `notes_json`) | Não |
+| `test_scheduler_store.py` | `SchedulerStore` — CRUD de tarefas agendadas, `get_due_tasks`/`get_missed_tasks` (excluindo recorrentes), cancelamento, guard de `mark_done`, recorrência (`reschedule_occurrence`, `max_occurrences`, `recurrence_until`), migração aditiva de schema | Não |
 | `test_scheduler.py` | `TaskScheduler._check_due_tasks` (polling puro) e `seconds_since_last_input` | Não |
 | `test_real_api_integration.py` | A API Gemini aceita o formato compactado sem erro de pairing | **Sim** |
 

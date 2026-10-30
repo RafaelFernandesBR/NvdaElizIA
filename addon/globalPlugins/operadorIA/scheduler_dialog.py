@@ -138,7 +138,11 @@ class SchedulerDialog(wx.Dialog):
         status_filter = "missed" if self.missed_mode else None
         for task in self.scheduler_store.list_tasks(status=status_filter):
             run_at_text = time.strftime(addon_config.SESSION_DATETIME_DISPLAY_FORMAT, time.localtime(task.run_at))
-            index = self.tasks_list.InsertItem(self.tasks_list.GetItemCount(), task.title)
+            title = task.title
+            if task.recurrence_seconds:
+                minutes = max(1, int(task.recurrence_seconds // 60))
+                title = title + " " + (_("(every %d min)") % minutes)
+            index = self.tasks_list.InsertItem(self.tasks_list.GetItemCount(), title)
             self.tasks_list.SetItem(index, 1, run_at_text)
             self.tasks_list.SetItem(index, 2, _STATUS_LABELS.get(task.status, task.status))
             self.tasks_list.SetItemData(index, task.id)

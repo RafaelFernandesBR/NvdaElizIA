@@ -110,6 +110,52 @@ msgstr ""
 "run_at precisa ser no futuro, recebido %(run_at)r que já passou (ou é "
 "agora)."
 
+#: addon\globalPlugins\operadorIA\action_tools.py:417
+#, python-format
+msgid "Invalid recurrence_minutes for schedule_task_tool: %(value)r"
+msgstr "recurrence_minutes inválido para schedule_task_tool: %(value)r"
+
+#: addon\globalPlugins\operadorIA\action_tools.py:421
+#, python-format
+msgid "recurrence_minutes must be greater than zero, received %(value)r."
+msgstr "recurrence_minutes precisa ser maior que zero, recebido %(value)r."
+
+#: addon\globalPlugins\operadorIA\action_tools.py:429
+msgid ""
+"max_occurrences and recurrence_until are only valid together with "
+"recurrence_minutes."
+msgstr ""
+"max_occurrences e recurrence_until só são válidos junto de "
+"recurrence_minutes."
+
+#: addon\globalPlugins\operadorIA\action_tools.py:436
+#, python-format
+msgid "Invalid max_occurrences for schedule_task_tool: %(value)r"
+msgstr "max_occurrences inválido para schedule_task_tool: %(value)r"
+
+#: addon\globalPlugins\operadorIA\action_tools.py:440
+#, python-format
+msgid "max_occurrences must be greater than zero, received %(value)r."
+msgstr "max_occurrences precisa ser maior que zero, recebido %(value)r."
+
+#: addon\globalPlugins\operadorIA\action_tools.py:449
+#, python-format
+msgid ""
+"Invalid recurrence_until for schedule_task_tool: %(value)r (expected ISO "
+"8601 'YYYY-MM-DDTHH:MM:SS')"
+msgstr ""
+"recurrence_until inválido para schedule_task_tool: %(value)r (esperado ISO "
+"8601 'AAAA-MM-DDTHH:MM:SS')"
+
+#: addon\globalPlugins\operadorIA\action_tools.py:454
+#, python-format
+msgid ""
+"recurrence_until must be in the future, received %(value)r which has "
+"already passed (or is now)."
+msgstr ""
+"recurrence_until precisa ser no futuro, recebido %(value)r que já passou "
+"(ou é agora)."
+
 #: addon\globalPlugins\operadorIA\chat_dialog.py:49
 msgid "Conversation history:"
 msgstr "Histórico da Conversa:"
@@ -299,6 +345,12 @@ msgstr "&Cancelar tarefa"
 msgid "&Delete"
 msgstr "&Excluir"
 
+#. Translators: suffix shown after a recurring scheduled task's title, %d is the interval in minutes.
+#: addon\globalPlugins\operadorIA\scheduler_dialog.py:144
+#, python-format
+msgid "(every %d min)"
+msgstr "(a cada %d min)"
+
 #: addon\globalPlugins\operadorIA\scheduler_dialog.py:149
 msgid "Select a task in the list first."
 msgstr "Selecione uma tarefa na lista primeiro."
@@ -438,8 +490,8 @@ msgid "Temperature (Creativity):"
 msgstr "Temperatura (Criatividade):"
 
 #: addon\globalPlugins\operadorIA\settings.py:119
-msgid "Maximum number of iterations (1-50):"
-msgstr "Máximo de iterações (1-50):"
+msgid "Maximum number of iterations (1-300):"
+msgstr "Máximo de iterações (1-300):"
 
 #: addon\globalPlugins\operadorIA\settings.py:125
 msgid "Maximum wait time between iterations (sec):"
@@ -537,7 +589,23 @@ msgstr "Gerenciamento de sessões não está disponível."
 msgid "Opens the list of saved sessions of %s"
 msgstr "Abre a lista de sessões salvas do %s"
 
-#: addon\globalPlugins\operadorIA\__init__.py:277
+#: addon\globalPlugins\operadorIA\__init__.py:285
+msgid "No automation is currently running."
+msgstr "Nenhuma automação está em execução no momento."
+
+#: addon\globalPlugins\operadorIA\__init__.py:288
+msgid "Cancelling..."
+msgstr "Cancelando..."
+
+#: addon\globalPlugins\operadorIA\__init__.py:305
+msgid "Cancelling monitoring (will not run again)..."
+msgstr "Cancelando o monitoramento (não vai rodar de novo)..."
+
+#: addon\globalPlugins\operadorIA\__init__.py:289
+msgid "Cancels the automation currently running, if any"
+msgstr "Cancela a automação em execução, se houver"
+
+#: addon\globalPlugins\operadorIA\__init__.py:293
 msgid "Task scheduling is not available."
 msgstr "Agendamento de tarefas não está disponível."
 
@@ -591,10 +659,28 @@ msgstr ""
 "Tarefa agendada '%(title)s' vai começar em %(seconds)s segundos. Pressione "
 "Cancelar ou Esc na janela que abriu pra não executar agora."
 
+#: addon\globalPlugins\operadorIA\__init__.py:657
+msgid "Empty note."
+msgstr "Nota vazia."
+
+#: addon\globalPlugins\operadorIA\__init__.py:659
+msgid "Note recorded."
+msgstr "Nota registrada."
+
+#: addon\globalPlugins\operadorIA\__init__.py:693
+#, python-format
+msgid "Note limit reached (%d) — summarize what matters most instead of adding more."
+msgstr "Limite de notas atingido (%d) — resuma o que importa mais em vez de adicionar outra."
+
 #: addon\globalPlugins\operadorIA\__init__.py:585
 #, python-format
 msgid "Invalid run_at: %s"
 msgstr "run_at inválido: %s"
+
+#: addon\globalPlugins\operadorIA\__init__.py:679
+#, python-format
+msgid "Invalid recurrence_until: %s"
+msgstr "recurrence_until inválido: %s"
 
 #: addon\globalPlugins\operadorIA\__init__.py:593
 #, python-format
@@ -647,6 +733,10 @@ msgstr ""
 #: addon\globalPlugins\operadorIA\__init__.py:693
 msgid "The AI is taking a while to respond, please wait..."
 msgstr "A IA está demorando a responder, aguarde..."
+
+#: addon\globalPlugins\operadorIA\__init__.py:836
+msgid "Automation cancelled by the user."
+msgstr "Automação cancelada pelo usuário."
 
 #: addon\globalPlugins\operadorIA\__init__.py:785
 #, python-format

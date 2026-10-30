@@ -124,6 +124,13 @@ class BatchPlan(NamedTuple):
     # resposta síncrona do usuário antes de seguir, em vez de executar
     # qualquer BatchItem. None no caso comum (nenhuma pergunta pendente).
     awaiting_question: Optional[str] = None
+    # Os 3 campos abaixo só são preenchidos quando done_tool chega com os
+    # parâmetros opcionais relevantes pra tarefas agendadas RECORRENTES (ver
+    # action_tools.DONE_TOOL e GlobalPlugin._finalize_scheduled_task) —
+    # None/False em qualquer tarefa comum, que nunca os envia.
+    changed: Optional[bool] = None
+    result_data: Optional[str] = None
+    stop_recurrence: bool = False
 
 
 class ActionProcessor:
@@ -168,7 +175,7 @@ class ActionProcessor:
         return False
 
     @staticmethod
-    def run_batch(items, pre_batch_hash, execute_fn, capture_fn):
+    def run_batch(items, pre_batch_hash, execute_fn, capture_fn, should_cancel=None):
         """
         Executa em sequência os itens "execute" de um BatchPlan, abortando o
         restante da fila se uma ação falhar ou a tela mudar no meio —
@@ -193,11 +200,20 @@ class ActionProcessor:
                 wrapper fino em volta de ActionExecutor.execute_action.
             capture_fn: callable() -> img_base64 (str) | None. Em produção,
                 um wrapper fino em volta de screen_capture.capture_fullscreen.
+            should_cancel: callable() -> bool, checado antes de EXECUTAR cada
+                item físico (nunca antes de um "support"/"skip", que não
+                tocam a tela). Em produção, GlobalPlugin._execute_batch passa
+                self._cancel_event.is_set (NVDA+Shift+C). Injetado em vez de
+                lido direto do plugin pelo mesmo motivo de execute_fn/
+                capture_fn: manter esta função pura/testável sem o GlobalPlugin
+                real. Default (None) nunca cancela — mesmo comportamento de
+                antes desta opção existir.
 
         Returns:
             bool: True se o circuit breaker de loop disparou (a automação
             inteira deve ser interrompida); False caso contrário.
         """
+        should_cancel = should_cancel or (lambda: False)
         batch_aborted = False
         last_hash = pre_batch_hash
 
@@ -225,6 +241,14 @@ class ActionProcessor:
                     "success": False,
                     "error": _("Skipped: batch interrupted (a previous action failed or the screen changed)."),
                 }
+                continue
+
+            if should_cancel():
+                item.response = {
+                    "success": False,
+                    "error": _("Skipped: automation cancelled by the user."),
+                }
+                batch_aborted = True
                 continue
 
             success, exec_error = execute_fn(item.action_info)
@@ -317,7 +341,15 @@ class ActionProcessor:
             summary = args.get("summary", "")
             success = bool(args.get("success"))
             item = BatchItem(fc.name, fc.id, "skip", {"success": success, "acknowledged": True})
-            return BatchPlan([item], True, summary, success)
+            # changed fica None (não True/False) quando a IA não mandou nada —
+            # distinção importante pra GlobalPlugin._finalize_scheduled_task
+            # tratar "não informou" como "mudou" (nunca suprime por omissão).
+            return BatchPlan(
+                [item], True, summary, success,
+                changed=args.get("changed"),
+                result_data=args.get("result_data"),
+                stop_recurrence=bool(args.get("stop_recurrence", False)),
+            )
 
         if ask_user_calls:
             fc = ask_user_calls[0]

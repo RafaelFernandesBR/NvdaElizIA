@@ -75,7 +75,7 @@ confspec = {
 	"api_timeout": "integer(default=30, min=1, max=300)",
 	"response_language": "string(default='pt-br')",
 	"ai_temperature": "float(default=0.4, min=0.0, max=2.0)",
-	"max_turns": "integer(default=15, min=1, max=50)",
+	"max_turns": "integer(default=15, min=1, max=300)",
 	"turn_delay": "float(default=2.0, min=0.1, max=10.0)",
 	"max_sessions": "integer(default=50, min=1, max=500)",
 	"scheduler_check_interval": "integer(default=30, min=5, max=3600)",
@@ -112,6 +112,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         # _try_start_automation()/_finish_automation() são os únicos pontos
         # de contato; .locked() serve só pra um aviso prévio (não consome).
         self._automation_lock = threading.Lock()
+        # Sinalizado por script_cancelarOperadorIA (NVDA+Shift+C) — checado
+        # no topo de cada turno e entre ações de um lote (ver run_batch em
+        # action_processor.py) pra interromper uma automação em andamento de
+        # verdade. Só tem efeito enquanto _automation_lock está preso; nunca
+        # precisa de lock próprio (Event já é thread-safe).
+        self._cancel_event = threading.Event()
+        # scheduled_task_id da automação em andamento, se houver (None pra
+        # tarefas interativas) — só pra script_cancelarOperadorIA conseguir
+        # diferenciar a mensagem quando a tarefa é RECORRENTE (cancelar
+        # cancela a série inteira, não só a ocorrência atual; vale avisar
+        # disso de forma explícita). Setado no início de _run_ai_loop,
+        # limpo no finally junto de _finish_automation().
+        self._current_scheduled_task_id = None
         self.chat_dialog = None
         self.last_screen_info = None
         self._current_goal = None
@@ -272,6 +285,28 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         wx.CallAfter(show_dialog)
     script_gerenciarSessoes.__doc__ = _("Opens the list of saved sessions of %s") % addon_config.ADDON_FULL_NAME
 
+    def script_cancelarOperadorIA(self, gesture):
+        # Ao contrário dos outros scripts deste addon, o lock PRECISA estar
+        # preso pra este fazer sentido — é o inverso da guarda usual.
+        if not self._automation_lock.locked():
+            ui.message(_("No automation is currently running."))
+            return
+        self._cancel_event.set()
+        # Cancelar durante uma ocorrência RECORRENTE cancela a série
+        # inteira (_finalize_scheduled_task -> cancel_task), não só a
+        # checagem atual — avisa isso explicitamente, já que "parar agora"
+        # e "parar de monitorar" são coisas diferentes pra quem pediu.
+        task_id = self._current_scheduled_task_id
+        is_recurring = False
+        if task_id is not None and self.scheduler_store is not None:
+            task = self.scheduler_store.load_task(task_id)
+            is_recurring = task is not None and task.recurrence_seconds is not None
+        if is_recurring:
+            ui.message(_("Cancelling monitoring (will not run again)..."))
+        else:
+            ui.message(_("Cancelling..."))
+    script_cancelarOperadorIA.__doc__ = _("Cancels the automation currently running, if any")
+
     def script_gerenciarAgendamentos(self, gesture):
         if self.scheduler_store is None:
             ui.message(_("Task scheduling is not available."))
@@ -337,6 +372,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         self.conversation_history.clear()
         self._speech_history.clear()
         ActionProcessor._last_actions = []
+        self._cancel_event.clear()
 
         if self.chat_dialog:
             try:
@@ -401,9 +437,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             "log_entries": record.log_entries,
             "last_model_content": record.last_model_content,
             "conversation_log": record.conversation_log,
+            "notes": record.notes,
         })
         self._speech_history.clear()
         ActionProcessor._last_actions = []  # mesmo reset usado em _on_new_question
+        self._cancel_event.clear()
 
         wx.CallAfter(self._open_chat_dialog_for_resumed_session, record)
 
@@ -549,16 +587,83 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         return result["cancelled"]
 
     def _start_scheduled_task_run(self, task):
-        self._begin_new_automation(task.command, steal_focus=False, scheduled_task_id=task.id)
+        command = task.command
+        # Verificação RECORRENTE: injeta um aviso no próprio texto do
+        # comando (fica parte de conversation_history.set_task_text em
+        # _run_ai_loop) — é assim que a IA sabe que é uma checagem
+        # recorrente e o que comparar, sem precisar "lembrar" nada sozinha
+        # entre execuções (ver reschedule_occurrence em scheduler_store.py).
+        # Crítico: o aviso "isto é recorrente" tem que ser injetado em TODA
+        # ocorrência com recurrence_seconds, não só quando já existe
+        # last_result_json — senão a 1ª ocorrência nunca avisa a IA, a IA
+        # nunca manda result_data (o prompt de sistema diz pra ignorar esses
+        # campos quando a tarefa não é claramente recorrente), e
+        # last_result_json fica NULL pra sempre: toda a comparação entre
+        # checagens ficaria inerte, silenciosamente, desde a 2ª ocorrência.
+        if task.recurrence_seconds is not None:
+            if task.last_result_json:
+                preamble = (
+                    f"[This is a recurring check (occurrence {task.occurrence_count + 1}). "
+                    f"Result of the previous check: {task.last_result_json}. "
+                    "Compare it with the current state before calling done_tool.]"
+                )
+            else:
+                preamble = (
+                    f"[This is a recurring check (occurrence {task.occurrence_count + 1}). "
+                    "This is the first occurrence — there is no previous result yet.]"
+                )
+            command = f"{command}\n\n{preamble}"
+        self._begin_new_automation(command, steal_focus=False, scheduled_task_id=task.id)
 
-    def _finalize_scheduled_task(self, scheduled_task_id, success, summary):
-        """Marca a linha em scheduler_store como concluída/falha — chamado em todo desfecho de _run_ai_loop quando veio de uma tarefa agendada."""
+    def _finalize_scheduled_task(self, scheduled_task_id, success, summary, cancelled=False,
+                                  changed=None, result_data=None, stop_recurrence=False):
+        """
+        Choke point único pro desfecho de uma tarefa agendada, chamado em
+        todo desfecho de _run_ai_loop. Três resultados possíveis pra linha
+        em scheduler_store:
+        - cancelled=True (NVDA+Shift+C em pleno turno): cancel_task — nunca
+          mark_done, pra não virar 'failed' por engano (desfecho distinto
+          de sucesso/falha).
+        - recurrence_seconds setado e stop_recurrence=False: reschedule_
+          occurrence em vez de terminal — a próxima ocorrência roda daqui a
+          recurrence_seconds, ou a linha termina sozinha se já bateu
+          max_occurrences/recurrence_until (decidido lá, nunca aqui).
+        - Caso contrário (tarefa única, ou recorrente que pediu
+          stop_recurrence): mark_done terminal, como antes.
+
+        Returns:
+            bool — True se o desfecho desta chamada deve ser anunciado ao
+            usuário (beep + fala + _show_result_in_chat). Só é False quando
+            uma ocorrência recorrente teve sucesso, não mudou nada
+            (changed=False) e a tarefa pediu notify_on_change_only — a
+            checagem em si ainda rodou e foi registrada, só a notificação é
+            suprimida. Uma falha numa ocorrência recorrente é SEMPRE
+            anunciada, independente de notify_on_change_only.
+        """
         if scheduled_task_id is None or self.scheduler_store is None:
-            return
+            return True
         try:
+            if cancelled:
+                self.scheduler_store.cancel_task(scheduled_task_id)
+                return True
+
+            task = self.scheduler_store.load_task(scheduled_task_id)
+            if task is not None and task.recurrence_seconds is not None and not stop_recurrence:
+                next_run_at = time.time() + task.recurrence_seconds
+                self.scheduler_store.reschedule_occurrence(
+                    scheduled_task_id, next_run_at, summary, success=success,
+                    last_result_json=result_data, session_id=self.current_session_id,
+                )
+                if not success:
+                    return True
+                effective_changed = True if changed is None else changed
+                return not (task.notify_on_change_only and not effective_changed)
+
             self.scheduler_store.mark_done(scheduled_task_id, success, summary, self.current_session_id)
+            return True
         except Exception:
-            logger.error(f"Falha ao marcar tarefa agendada {scheduled_task_id} como concluída", exc_info=True)
+            logger.error(f"Falha ao finalizar tarefa agendada {scheduled_task_id}", exc_info=True)
+            return True
 
     def _build_support_handlers(self):
         """
@@ -566,17 +671,32 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         tools kind="support" (ver action_tools.TOOL_NAME_TO_ACTION_TYPE) —
         mesma injeção de dependência que execute_fn/capture_fn já usam,
         pra manter o planejador puro/testável sem SQLite real.
+        record_note_tool não depende do scheduler, então fica disponível
+        mesmo quando scheduler_store falhou ao inicializar.
         """
-        if self.scheduler_store is None:
-            return {}
-        return {
-            "schedule_task_tool": self._handle_schedule_task_tool,
-            "list_scheduled_tasks_tool": self._handle_list_scheduled_tasks_tool,
-            "cancel_scheduled_task_tool": self._handle_cancel_scheduled_task_tool,
-        }
+        handlers = {"record_note_tool": self._handle_record_note_tool}
+        if self.scheduler_store is not None:
+            handlers.update({
+                "schedule_task_tool": self._handle_schedule_task_tool,
+                "list_scheduled_tasks_tool": self._handle_list_scheduled_tasks_tool,
+                "cancel_scheduled_task_tool": self._handle_cancel_scheduled_task_tool,
+            })
+        return handlers
+
+    def _handle_record_note_tool(self, args):
+        note = (args.get("note") or "").strip()
+        if not note:
+            return {"success": False, "error": _("Empty note.")}
+        if not self.conversation_history.record_note(note):
+            return {
+                "success": False,
+                "error": _("Note limit reached (%d) — summarize what matters most instead of adding more.")
+                % addon_config.MAX_NOTES,
+            }
+        return {"success": True, "message": _("Note recorded.")}
 
     def _handle_schedule_task_tool(self, args):
-        # run_at já foi validado (parseável e futuro) em action_tools.
+        # run_at/recurrence_* já foram validados em action_tools.
         # validate_args antes de chegar aqui — mas datas são entrada
         # externa, então o parse é refeito com guarda própria mesmo assim.
         try:
@@ -584,11 +704,26 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         except (TypeError, ValueError) as e:
             return {"success": False, "error": _("Invalid run_at: %s") % e}
 
+        recurrence_minutes = args.get("recurrence_minutes") or None
+        recurrence_seconds = int(recurrence_minutes * 60) if recurrence_minutes else None
+
+        recurrence_until_epoch = None
+        recurrence_until_raw = args.get("recurrence_until")
+        if recurrence_until_raw:
+            try:
+                recurrence_until_epoch = datetime.fromisoformat(recurrence_until_raw).timestamp()
+            except (TypeError, ValueError) as e:
+                return {"success": False, "error": _("Invalid recurrence_until: %s") % e}
+
         task_id = self.scheduler_store.create_task(
             command=args.get("command", ""),
             title=args.get("title", ""),
             run_at=run_at_epoch,
             created_by="ai",
+            recurrence_seconds=recurrence_seconds,
+            notify_on_change_only=bool(args.get("notify_only_on_change", False)),
+            max_occurrences=args.get("max_occurrences") or None,
+            recurrence_until=recurrence_until_epoch,
         )
         return {"success": True, "message": _("Scheduled task created (id=%s).") % task_id, "task_id": task_id}
 
@@ -727,6 +862,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             capture_state.get("mime"),
         )
 
+    def _mark_cancelled(self):
+        """
+        Registra o cancelamento (NVDA+Shift+C) no histórico e avisa por
+        voz — chamado nos dois pontos de checagem dentro de _run_ai_loop
+        (topo do turno e depois de _execute_batch). Devolve o texto final,
+        pro chamador atribuir a last_display_text antes do break.
+        """
+        self.conversation_history.set_last_model_content(None)
+        text = _("Automation cancelled by the user.")
+        wx.CallAfter(ui.message, text)
+        self._autosave_session()
+        return text
+
     def _execute_batch(self, items, pre_batch_hash):
         """
         Wrapper fino em volta de ActionProcessor.run_batch (a lógica de
@@ -755,7 +903,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             img, _, _, _ = self._wait_for_stable_screen(addon_config.STABILITY_MAX_WAIT_ACTION)
             return img
 
-        loop_broken = ActionProcessor.run_batch(items, pre_batch_hash, execute_fn, capture_fn)
+        loop_broken = ActionProcessor.run_batch(
+            items, pre_batch_hash, execute_fn, capture_fn, should_cancel=self._cancel_event.is_set
+        )
         if loop_broken:
             logger.warning("Circuit breaker de loop disparou dentro do lote — parando a automação.")
         return loop_broken
@@ -777,7 +927,18 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         # outro desfecho (circuit breaker, max_turns, erro de API/captura,
         # exceção) é, por definição, um encerramento sem sucesso.
         task_succeeded = False
+        # True só quando NVDA+Shift+C interrompe esta chamada em andamento —
+        # desfecho distinto de falha (não soa o beep de falha, não marca a
+        # tarefa agendada como 'failed'; ver _finalize_scheduled_task).
+        task_cancelled = False
+        # Preenchidos só quando done_tool chega com os parâmetros opcionais
+        # de tarefa RECORRENTE (ver action_tools.DONE_TOOL/BatchPlan) — None/
+        # False em qualquer tarefa comum, que nunca os envia.
+        done_changed = None
+        done_result_data = None
+        done_stop_recurrence = False
         try:
+            self._current_scheduled_task_id = scheduled_task_id
             if is_screen_curtain_active():
                 wx.CallAfter(
                     ui.message,
@@ -839,6 +1000,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
             for turn in range(max_turns):
                 logger.debug(f"Turno {turn + 1}/{max_turns}")
+
+                if self._cancel_event.is_set():
+                    task_cancelled = True
+                    last_display_text = self._mark_cancelled()
+                    break
 
                 if turn == 0:
                     # Primeira foto da tarefa — não há ação anterior pra
@@ -933,6 +1099,11 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 loop_broken = self._execute_batch(plan.items, hashlib.md5(img_base64.encode()).hexdigest())
                 self.conversation_history.record_step(plan.items, display_text)
 
+                if self._cancel_event.is_set():
+                    task_cancelled = True
+                    last_display_text = self._mark_cancelled()
+                    break
+
                 if loop_broken:
                     # Descarta a function_call deste turno sem resposta —
                     # nunca deixar uma pendente no histórico (ver risco
@@ -951,6 +1122,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                     # próximo turno nesta chamada — mesmo motivo do
                     # loop_broken acima: não deixa a function_call pendente.
                     task_succeeded = bool(plan.success)
+                    done_changed = plan.changed
+                    done_result_data = plan.result_data
+                    done_stop_recurrence = bool(plan.stop_recurrence)
                     if not task_succeeded:
                         last_display_text = (
                             _("Did not complete: %s") % last_display_text if last_display_text
@@ -971,15 +1145,20 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 logger.warning(f"Loop encerrado por atingir max_turns ({max_turns}) sem concluir")
 
             logger.info(f"Loop de automação encerrado após {turn + 1} turno(s)")
-            if not task_succeeded:
-                # Tom distinto dos demais beeps do addon (1000/100, 800/50,
-                # 500/60, 400/150) — sinal sonoro de "não funcionou",
-                # essencial pra um usuário cego sem precisar ouvir o texto
-                # inteiro pra saber se a automação deu certo.
-                tones.beep(300, 250)
             final_text = last_display_text or _("Operation completed.")
-            self._finalize_scheduled_task(scheduled_task_id, task_succeeded, final_text)
-            wx.CallAfter(self._show_result_in_chat, command, final_text, steal_focus)
+            should_announce = self._finalize_scheduled_task(
+                scheduled_task_id, task_succeeded, final_text,
+                cancelled=task_cancelled, changed=done_changed,
+                result_data=done_result_data, stop_recurrence=done_stop_recurrence,
+            )
+            if should_announce:
+                if not task_succeeded and not task_cancelled:
+                    # Tom distinto dos demais beeps do addon (1000/100, 800/50,
+                    # 500/60, 400/150) — sinal sonoro de "não funcionou",
+                    # essencial pra um usuário cego sem precisar ouvir o texto
+                    # inteiro pra saber se a automação deu certo.
+                    tones.beep(300, 250)
+                wx.CallAfter(self._show_result_in_chat, command, final_text, steal_focus)
 
         except Exception as e:
             logger.error(f"Exceção não tratada no loop de automação: {e}", exc_info=True)
@@ -989,6 +1168,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             self._finalize_scheduled_task(scheduled_task_id, False, error_text)
             wx.CallAfter(self._show_result_in_chat, command, error_text, steal_focus)
         finally:
+            self._current_scheduled_task_id = None
             self._finish_automation()
 
     def _show_result_in_chat(self, command, response_text, steal_focus=True):
@@ -1049,6 +1229,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                 wx.CallAfter(ui.message, _("%s is already running") % addon_config.ADDON_NAME)
                 return
             ActionProcessor._last_actions = []
+            # Mesmo reset de _begin_new_automation — essencial aqui: uma
+            # pergunta de continuação NUNCA passa por _begin_new_automation,
+            # então sem isso um cancelamento (NVDA+Shift+C) de uma chamada
+            # ANTERIOR a _run_ai_loop ficaria "preso" ligado e cancelaria
+            # esta nova chamada imediatamente, no primeiro turno.
+            self._cancel_event.clear()
 
             if self.chat_dialog:
                 wx.CallAfter(self.chat_dialog.Hide)
@@ -1069,4 +1255,5 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         "kb:NVDA+shift+r": "iniciarOperadorIA",
         "kb:NVDA+shift+o": "gerenciarSessoes",
         "kb:NVDA+shift+a": "gerenciarAgendamentos",
+        "kb:NVDA+shift+c": "cancelarOperadorIA",
     }

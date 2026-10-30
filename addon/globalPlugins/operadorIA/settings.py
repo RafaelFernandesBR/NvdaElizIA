@@ -116,9 +116,9 @@ class SettingsPanel(gui.settingsDialogs.SettingsPanel):
 		self.tempChoice.SetSelection(selected_index if selected_index >= 0 else addon_config.DEFAULT_TEMP_INDEX)
 		sizer.Add(self.tempChoice, 0, wx.EXPAND | wx.ALL, 5)
 
-		turnsLabel = wx.StaticText(box, label=_("Maximum number of iterations (1-50):"))
+		turnsLabel = wx.StaticText(box, label=_("Maximum number of iterations (1-300):"))
 		sizer.Add(turnsLabel, 0, wx.ALL, 5)
-		self.turnsSpinCtrl = wx.SpinCtrl(box, min=1, max=50)
+		self.turnsSpinCtrl = wx.SpinCtrl(box, min=1, max=300)
 		self.turnsSpinCtrl.SetValue(self._load_config_value("max_turns", addon_config.DEFAULT_MAX_TURNS))
 		sizer.Add(self.turnsSpinCtrl, 0, wx.EXPAND | wx.ALL, 5)
 

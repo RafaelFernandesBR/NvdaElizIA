@@ -185,8 +185,9 @@ Esta é a peça que resolve o problema central da refatoração: no design
 antigo, `conversation_history` era uma lista que só crescia, e cada
 screenshot de cada turno da tarefa era reenviado, inline, em TODA chamada
 subsequente — O(n²) em bytes de imagem ao longo de uma tarefa de `n`
-turnos. Com `max_turns` configurável até 50, isso significava reenviar até
-49 screenshots completos no último turno.
+turnos. Com `max_turns` configurável até 300 (teto elevado de 50 depois do
+suporte a tarefas longas, ver seção própria abaixo), isso significaria
+reenviar até 299 screenshots completos no último turno.
 
 A fonte do design atual: **Windows-Use** descarta a mensagem de estado
 pesada do turno (screenshot + árvore de UI) imediatamente depois de usá-la
@@ -197,7 +198,7 @@ além: por padrão só a screenshot MAIS RECENTE é enviada como imagem
 numa janela limitada (`agent_history_description`: primeiro item +
 `[... N passos omitidos ...]` + últimos N).
 
-`ConversationHistory` guarda 4 coisas:
+`ConversationHistory` guarda 5 coisas:
 
 - `_task_text`: a âncora da tarefa (`set_task_text`), sempre enviada,
   nunca é omitida pela janela.
@@ -218,6 +219,12 @@ numa janela limitada (`agent_history_description`: primeiro item +
   `_log_entries` acima: essa confusão — mostrar o log técnico de ações como
   se fosse a conversa — era exatamente um bug real já corrigido (o replay do
   resume usava `_log_entries` com sender fixo `"Histórico"`).
+- `_notes` (adicionado com o suporte a tarefas longas, ver seção própria
+  abaixo): fatos anotados pela IA via `record_note_tool`. Ao contrário de
+  `_log_entries`, **nunca** é janelado — `notes_text()` sempre devolve a
+  lista inteira, de propósito: é a forma de uma tarefa com mais turnos do
+  que `MAX_HISTORY_LOG_ITEMS` (8) não perder um fato descoberto no turno 2
+  quando já estiver no turno 20.
 
 `build_messages_for_api(current_user_parts)` monta `contents=` com, no
 máximo, 3 `Content`:
@@ -270,8 +277,9 @@ fala a mesma coisa várias vezes seguidas (comum).
 
 `ConversationHistory` já era "leve" por design (nunca guarda screenshots —
 ver seção anterior), o que tornou a persistência de seções barata: salvar
-uma conversa em disco é só serializar os mesmos 4 campos que já vivem na
-memória (`_task_text`, `_log_entries`, `_last_model_content`, `_conversation_log`).
+uma conversa em disco é só serializar os mesmos 5 campos que já vivem na
+memória (`_task_text`, `_log_entries`, `_last_model_content`,
+`_conversation_log`, `_notes`).
 
 - **`session_store.py`** é uma camada SQLite pura (`sqlite3`/`json`/`time`
   — nunca importa `wx`, `google.genai`, `config` nem `globalVars`), o que
@@ -350,13 +358,14 @@ memória (`_task_text`, `_log_entries`, `_last_model_content`, `_conversation_lo
   retroativamente sessões já salvas até a próxima sessão ser criada.
 - **Migração de schema aditiva**: a tabela `sessions` ganhou a coluna
   `conversation_log_json` depois que o recurso de seções já estava em uso
-  (usuários podem ter `.db` reais só com as 3 colunas originais).
-  `_ensure_schema()` confere via `PRAGMA table_info(sessions)` e roda
-  `ALTER TABLE ... ADD COLUMN ... DEFAULT '[]'` só se a coluna ainda não
-  existir — preserva `task_text`/`log_entries`/`last_model_content` já
-  salvos; sessões migradas carregam com `conversation_log=[]` (replay vazio
-  ao retomar, não é erro). Testado explicitamente recriando o schema antigo
-  via SQL direto (`tests/test_session_store.py`,
+  (usuários podem ter `.db` reais só com as 3 colunas originais), e mais
+  tarde `notes_json` pelo mesmo motivo (ver suporte a tarefas longas
+  abaixo). `_ensure_schema()` confere via `PRAGMA table_info(sessions)` e
+  roda `ALTER TABLE ... ADD COLUMN ... DEFAULT '[]'` só se a coluna ainda
+  não existir — preserva as colunas já salvas; sessões migradas carregam
+  com `conversation_log=[]`/`notes=[]` (replay vazio ao retomar, não é
+  erro). Testado explicitamente recriando o schema antigo via SQL direto
+  (`tests/test_session_store.py`,
   `test_migrates_old_schema_db_without_conversation_log_column`).
 
 ## Agendamento de tarefas e tools de apoio
@@ -513,37 +522,181 @@ marcadas `missed` (nunca rodam nem são descartadas sozinhas) e aparecem em
 `SchedulerDialog(missed_mode=True)` pro usuário decidir, por tarefa, "Rodar
 agora" ou "Descartar".
 
+## Tarefas longas: cancelamento, notas persistentes e monitoramento recorrente
+
+Pesquisa que levou a este desenho: três agentes de exploração (loop de
+automação/limites de turno, scheduler/recorrência, persistência de
+sessões/cancelamento) confirmaram que "tarefas longas" eram dois problemas
+distintos — sessão única mais longa (passagem, pesquisa) e monitoramento
+recorrente (preço) — e que faltava uma peça pré-requisito pras duas:
+**não existia nenhum jeito de cancelar uma automação em andamento**.
+Também pesquisados (READMEs oficiais) os projetos Windows-Use, usecomputer,
+agent-computer-use, browser-use e Codex CLI: nenhum tem conceito de tarefa
+agendada/recorrente — a Parte D abaixo é desenho novo. Duas coisas de lá
+validam decisões daqui: o `memory_tool` do Windows-Use (persistir fatos
+entre passos) é a mesma ideia do `record_note_tool`; e seu
+`max_consecutive_failures` como circuit breaker SEPARADO do orçamento de
+passos confirma manter nosso circuit breaker de ações repetidas (loop) e o
+teto de `max_turns` como mecanismos independentes.
+
+### Cancelamento (`_cancel_event`) — pré-requisito das duas fases
+
+`GlobalPlugin._cancel_event` (`threading.Event`) é setado só por
+`script_cancelarOperadorIA` (`NVDA+Shift+C`) e checado em dois pontos de
+`_run_ai_loop`: no topo de cada turno (antes de gastar uma chamada de API)
+e logo depois de `_execute_batch` (cobre cancelar em pleno meio de um
+lote de ações). `ActionProcessor.run_batch` ganhou um parâmetro
+`should_cancel: Callable[[], bool]` — mesma injeção de dependência que já
+usa pra `execute_fn`/`capture_fn`, pra continuar puro/testável; verificado
+só entre itens físicos (nunca `kind="support"`/`"skip"`, que não tocam a
+tela), abortando o resto do lote exatamente como uma falha/mudança de tela
+já fazia.
+
+Cancelamento é um **terceiro desfecho**, nunca tratado como falha:
+`_finalize_scheduled_task` ganhou um parâmetro `cancelled` que chama
+`scheduler_store.cancel_task` (reaproveitado — a linha ainda está
+`'pending'` nesse ponto, nada marca `'running'` explicitamente) em vez de
+`mark_done`, e `_run_ai_loop` não soa o beep de falha (300Hz/250ms) quando
+`task_cancelled` é `True`. **Pegadinha corrigida**: `_cancel_event` precisa
+ser limpo em TODO ponto que possa levar a uma nova chamada de
+`_run_ai_loop` sem passar por `_begin_new_automation` — `_on_new_question`
+(pergunta de continuação) e `_resume_session` também ganharam
+`self._cancel_event.clear()`, senão um cancelamento de uma chamada anterior
+ficaria "preso" ligado e cancelaria a próxima pergunta no primeiro turno.
+
+**Cancelar durante uma ocorrência RECORRENTE cancela a série inteira**,
+nunca só a checagem atual — é a mesma linha em `scheduled_tasks`, e
+`cancel_task` é terminal por design (ver Monitoramento recorrente abaixo).
+Decisão deliberada (reagendar "pule só esta checagem" exigiria um status
+intermediário novo, tipo 'running', que o resto do desenho evita de
+propósito), mas o usuário precisa SABER que é isso que está acontecendo:
+`script_cancelarOperadorIA` rastreia `self._current_scheduled_task_id`
+(setado no início de `_run_ai_loop`, limpo no `finally`) e, se a tarefa em
+andamento tiver `recurrence_seconds`, fala uma mensagem distinta
+("Cancelando o monitoramento (não vai rodar de novo)...") em vez do
+"Cancelando..." genérico.
+
+### `record_note_tool` — fatos que sobrevivem à janela do histórico
+
+`history_log_text()` descarta o meio do histórico além de
+`MAX_HISTORY_LOG_ITEMS` (8) — para uma tarefa de poucos passos isso nunca
+importou, mas numa tarefa de dezenas de turnos (comparar vários sites antes
+de decidir) um fato do turno 2 some do contexto da IA no turno 10. Em vez
+de um pipeline de resumarização via chamada extra à API (avaliado e
+descartado — mais uma chamada de rede, mais uma fonte de erro, pra resolver
+algo que a própria IA já sabe identificar como "vale a pena anotar"),
+reaproveitou-se o padrão `kind="support"` já existente
+(`schedule_task_tool` etc.): `record_note_tool(note)` resolve na hora, nunca
+toca a tela, e o fato vai pra `ConversationHistory._notes` — uma lista
+**nunca janelada**, sempre enviada por completo via `notes_text()`.
+
+**Teto `addon_config.MAX_NOTES` (40), achado na revisão desta feature**:
+`_notes` nunca é janelado DE PROPÓSITO (é o ponto da tool), mas isso por si
+só reabriria o problema O(n²) que toda a arquitetura de `ConversationHistory`
+existe pra evitar — com `max_turns` agora até 300 (ver Parte B), uma lista
+de notas crescendo sem limite seria reenviada por completo em cada uma das
+até 300 chamadas. Pior: `record_note_tool` é `kind="support"`, então NUNCA
+passa por `is_loop_detected` (só vê ações físicas) — nada impediria a IA de
+só acumular notas sem limite. `ConversationHistory.record_note()` devolve
+`False` ao bater o teto (em vez de aceitar silenciosamente), e
+`GlobalPlugin._handle_record_note_tool` traduz isso num erro explícito pra
+IA ("resuma em vez de adicionar mais") — mesmo princípio de nunca aceitar
+silenciosamente além de um limite que `MAX_ACTIONS_PER_TURN`/
+`MAX_HISTORY_LOG_ITEMS` já seguem.
+
+### Monitoramento recorrente — estender o scheduler, não duplicá-lo
+
+`scheduler_store.py` era estritamente *one-shot*: toda linha de
+`scheduled_tasks` disparava uma vez e terminava num status terminal. A
+extensão reaproveita o `fire-time gate`/`TaskScheduler`/`GraceCountdownDialog`
+inteiros, sem modificá-los — eles já tratam "uma `ScheduledTask` por vez,
+decida o que fazer" de forma genérica.
+
+- Colunas novas (migração aditiva, mesmo padrão de `session_store`):
+  `recurrence_seconds` (`NULL` = tarefa única, comportamento inalterado),
+  `last_result_json` (snapshot da última checagem, pra IA comparar),
+  `notify_on_change_only`, `max_occurrences`, `occurrence_count`,
+  `recurrence_until`.
+- `reschedule_occurrence()` é a ÚNICA forma de uma linha recorrente seguir
+  `'pending'` sem terminar: incrementa `occurrence_count` e decide ELA
+  MESMA — nunca a IA — se já bateu `max_occurrences`/`recurrence_until`
+  (nesse caso termina via `mark_done`, igual tarefa única). Isso existe
+  porque pedir pra IA "lembrar que já checou 2 de 3 vezes" sozinha é
+  frágil: cada ocorrência é uma execução nova de `_run_ai_loop`, sem
+  memória própria entre chamadas — contar tem que ser responsabilidade do
+  scheduler, em SQL, não de texto livre entre execuções.
+- `_start_scheduled_task_run` injeta um aviso no próprio texto do `command`
+  antes de chamar `_begin_new_automation` — é assim que a IA sabe que é
+  uma checagem recorrente, sem nenhum parâmetro novo precisando atravessar
+  `_begin_new_automation`/`_run_ai_loop`. **Bug de bootstrap corrigido na
+  revisão**: o aviso só era injetado quando `task.last_result_json` já
+  existia — mas essa coluna começa `NULL` e só é preenchida quando
+  `done_tool` manda `result_data`, e o prompt de sistema instrui a IA a
+  ignorar `changed`/`result_data`/`stop_recurrence` justamente quando o
+  texto da tarefa não menciona uma checagem anterior. Resultado: a 1ª
+  ocorrência nunca avisava nada, a IA nunca mandava `result_data`,
+  `last_result_json` ficava `NULL` pra sempre, e a comparação entre
+  checagens (o ponto central da feature) nunca saía do papel — silenciosa,
+  sem erro nenhum. Corrigido separando as duas coisas: o aviso "isto é
+  recorrente, ocorrência N" sai sempre que `recurrence_seconds is not None`
+  (não só quando há resultado anterior); só o trecho "resultado da
+  checagem anterior: ..." depende de `last_result_json` existir.
+- `done_tool` ganhou 3 parâmetros opcionais, relevantes só em checagem
+  recorrente (`changed`, `result_data`, `stop_recurrence`) — propagados via
+  `BatchPlan` até `_finalize_scheduled_task`, que decide: sucesso +
+  `changed=False` + `notify_on_change_only` → reagenda, mas SUPRIME o
+  anúncio completo (sem abrir o chat, sem leitura longa — só loga); falha
+  numa ocorrência recorrente é **sempre** anunciada, independente da flag
+  (notify_on_change_only existe pra "não me chame só porque nada mudou",
+  nunca pra esconder um problema); `stop_recurrence=True` termina de vez.
+- `get_missed_tasks` ganhou `AND recurrence_seconds IS NULL` — tarefas
+  recorrentes nunca entram na revisão de "perdidas": uma checagem recorrente
+  é sobre o estado ATUAL, replay de N checagens perdidas produziria N
+  respostas idênticas. Elas simplesmente disparam na próxima vez que o
+  scheduler rodar, recalculando a partir de agora (skip-the-gap).
+- **Limitação deliberada, não corrigida**: o aviso sonoro + janela de graça
+  de pré-disparo (`_announce_and_wait_grace`) continua disparando a CADA
+  ocorrência — antes de checar, não dá pra saber se vai mudar algo. Só o
+  anúncio de RESULTADO é condicional. Uma tarefa recorrente muito frequente
+  vai soar o aviso de pré-disparo toda vez; documentado, não resolvido —
+  não existe caminho "silencioso" de verificação nesta arquitetura (o
+  `ActionExecutor` move mouse/teclado reais).
+- Bug latente corrigido no caminho: `mark_done()` não tinha guarda de
+  status (diferente de `cancel_task`/`mark_missed`), então podia
+  sobrescrever uma linha cancelada pelo `SchedulerDialog` ENQUANTO a
+  automação daquela ocorrência ainda rodava. Ganhou `AND status = 'pending'`,
+  mesmo padrão dos outros dois.
+- Dois bugs adicionais corrigidos na revisão, ambos em
+  `reschedule_occurrence`: (1) os dois `UPDATE` escreviam
+  `last_result_json = ?` incondicionalmente, inclusive quando o valor
+  passado era `None` (ocorrência que falhou antes de chamar `done_tool`,
+  ou que teve sucesso mas a IA omitiu `result_data`) — apagando um
+  snapshot válido da ocorrência anterior e quebrando a base de comparação
+  da próxima checagem; trocado por `last_result_json = COALESCE(?,
+  last_result_json)` nos dois `UPDATE`. (2) o término por
+  `max_occurrences`/`recurrence_until` sempre marcava `STATUS_DONE`, mesmo
+  quando a ocorrência final tinha `success=False` — `reschedule_occurrence`
+  ganhou um parâmetro `success` (default `True`) e usa `STATUS_DONE if
+  success else STATUS_FAILED`, igual `mark_done`.
+
 ## Fase futura (não implementada)
 
 - **Compactação via LLM** (como `Context.need_compaction`/`compact()` do
   Windows-Use, ou `maybe_compact_messages()` do browser-use): resumir o log
   textual via uma chamada extra ao modelo quando o uso de tokens se
   aproxima da janela de contexto. Avaliado e descartado por ora — o design
-  atual já é O(1) por turno e `max_turns` tem teto de 50, então estourar a
+  atual já é O(1) por turno e `max_turns` tem teto de 300, então estourar a
   janela de contexto de um modelo Gemini (>1M tokens) não é um cenário
-  plausível no regime atual. `response.usage_metadata.total_token_count`
-  já vem de graça em cada resposta da SDK, então a instrumentação seria
-  barata de adicionar se isso mudar.
+  plausível no regime atual; `record_note_tool` (ver acima) já cobre o caso
+  prático de "não perder um fato importante" sem o custo de uma chamada
+  extra. `response.usage_metadata.total_token_count` já vem de graça em
+  cada resposta da SDK, então a instrumentação seria barata de adicionar se
+  isso mudar.
 - **UI Automation complementando clique por coordenada** (como o
   `click_tool`/`type_tool` do Windows-Use fazem via árvore de acessibilidade
   do Windows, não só visão): reduziria erro de clique em controles pequenos
   ou telas de alta densidade. Escopo bem maior (wrapper UIA, mapeamento de
   controles, fallback pra coordenadas) — ficaria como um design separado.
-- **Tarefas longas de verdade** (ex: pesquisar e comparar passagens de
-  viagem): agendamento (`schedule_task_tool`), `ask_user_tool` e `app_tool`
-  (ver seção acima) são os primeiros degraus nessa direção — dão à IA um
-  jeito de agir fora do turno-a-turno síncrono e de pedir uma decisão no
-  meio do caminho — mas não resolvem o problema inteiro. Uma tarefa que
-  genuinamente precisa de mais que `max_turns` (teto 50) ou que precisa
-  sobreviver a múltiplas chamadas de `_run_ai_loop` ao longo de horas/dias
-  exigiria checkpointing explícito de progresso (o que já foi tentado, o
-  que falta, o que foi aprendido) persistido entre chamadas — combinado
-  com a compactação via LLM do item acima. Avaliado e deixado pra um design
-  separado; não confundir com o agendamento em si, que é só o "gatilho".
-- **Tarefas agendadas recorrentes** (diária/semanal): `scheduler_store.py`
-  comporta adicionar uma coluna `recurrence_rule` depois sem migração
-  destrutiva (mesmo padrão aditivo de `session_store._ensure_schema`) — não
-  implementado porque não foi pedido ainda, só agendamento de horário único.
 
 ## Como testar sem o NVDA rodando
 
@@ -712,3 +865,25 @@ pipeline de principal fim-a-fim, rodar manualmente com `NVDA+Shift+R`:
     argumentos DIFERENTES entre ações físicas sem efeito — confirmar que
     essas chamadas "support" nunca contam pro circuit breaker (ver
     `ActionInfo.signature()` e o ramo `kind="support"` em `run_batch`).
+18. **Cancelamento**: iniciar uma tarefa de vários passos, pressionar
+    `NVDA+Shift+C` no meio — confirmar que para (sem o beep de falha
+    300Hz/250ms), que `_automation_lock` libera (um novo `NVDA+Shift+R`
+    funciona na hora), e que uma pergunta de continuação depois no chat
+    funciona normalmente (confirma que `_cancel_event` foi limpo em
+    `_on_new_question`). Pressionar `NVDA+Shift+C` sem nenhuma automação
+    rodando — deve só avisar "nenhuma automação em execução", sem erro.
+19. **Monitoramento recorrente**: pedir no chat algo como "monitore esse
+    link 3 vezes nos próximos 10 minutos e me avise só se mudar".
+    Confirmar que `NVDA+Shift+A` mostra a tarefa com o sufixo "(a cada N
+    min)". Deixar rodar as 3 ocorrências — a 1ª deve anunciar o resultado
+    normalmente; se nada mudar nas seguintes, não deve abrir o chat nem
+    falar o resumo (só o aviso sonoro de pré-disparo, que ainda ocorre
+    sempre); a 3ª deve terminar a tarefa (status `done`) em vez de agendar
+    uma 4ª. Repetir pedindo "monitore até o preço cair abaixo de X" e
+    simular essa condição — confirmar que a IA chama `stop_recurrence=true`
+    e a tarefa termina de vez, com aviso completo.
+20. **`record_note_tool`**: numa tarefa de ~15+ turnos (acima da janela de
+    `MAX_HISTORY_LOG_ITEMS`=8), confirmar no log de debug que uma nota
+    registrada num turno inicial continua aparecendo no prompt (seção
+    "📌 NOTAS IMPORTANTES") em turnos bem depois de ter saído do log
+    textual janelado.

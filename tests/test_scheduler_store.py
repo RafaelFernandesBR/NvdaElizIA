@@ -41,6 +41,10 @@ def test_create_and_load_task_roundtrip():
         assert task.created_by == "ai"
         assert task.result_summary is None
         assert task.session_id is None
+        assert task.recurrence_seconds is None, "tarefa única, sem recorrência — comportamento padrão inalterado"
+        assert task.max_occurrences is None
+        assert task.occurrence_count == 0
+        assert task.recurrence_until is None
     print("test_create_and_load_task_roundtrip OK")
 
 
@@ -110,6 +114,20 @@ def test_mark_done_success_and_failure():
     print("test_mark_done_success_and_failure OK")
 
 
+def test_mark_done_never_overwrites_a_cancelled_task():
+    # Regressão do bug corrigido junto da recorrência: o SchedulerDialog
+    # pode cancelar uma linha ENQUANTO a automação daquela ocorrência ainda
+    # está rodando (nada marca 'running' no meio) — mark_done não pode
+    # sobrescrever esse cancelamento de volta pra done/failed.
+    with _TempDb() as db_path:
+        store = SchedulerStore(db_path)
+        task_id = store.create_task("x", "X", run_at=1000.0)
+        store.cancel_task(task_id)
+        assert store.mark_done(task_id, success=True, summary="concluído") is False
+        assert store.load_task(task_id).status == scheduler_store.STATUS_CANCELLED
+    print("test_mark_done_never_overwrites_a_cancelled_task OK")
+
+
 def test_mark_missed_only_affects_pending():
     with _TempDb() as db_path:
         store = SchedulerStore(db_path)
@@ -155,6 +173,162 @@ def test_schema_creation_is_idempotent():
     print("test_schema_creation_is_idempotent OK")
 
 
+def test_migrates_old_schema_db_without_recurrence_columns():
+    """
+    Reproduz um .db real criado antes do suporte a tarefas longas (sem as
+    6 colunas de recorrência) e confirma que abrir com SchedulerStore
+    migra em vez de quebrar, preservando a tarefa já salva.
+    """
+    import sqlite3
+    with _TempDb() as db_path:
+        conn = sqlite3.connect(db_path)
+        conn.execute("""
+            CREATE TABLE scheduled_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                command TEXT NOT NULL,
+                title TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                run_at REAL NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_by TEXT NOT NULL DEFAULT 'user',
+                result_summary TEXT,
+                session_id INTEGER,
+                updated_at REAL NOT NULL
+            )
+        """)
+        conn.execute(
+            "INSERT INTO scheduled_tasks (command, title, created_at, run_at, status, created_by, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ("abrir notas", "Tarefa antiga", 1.0, 1000.0, scheduler_store.STATUS_PENDING, "user", 1.0),
+        )
+        old_id = conn.execute("SELECT id FROM scheduled_tasks").fetchone()[0]
+        conn.commit()
+        conn.close()
+
+        store = SchedulerStore(db_path)  # dispara _ensure_schema -> migração aditiva
+        task = store.load_task(old_id)
+        assert task.command == "abrir notas", "dado antigo não pode se perder na migração"
+        assert task.recurrence_seconds is None
+        assert task.occurrence_count == 0
+        assert task.max_occurrences is None
+
+        # Tarefa migrada deve aceitar reschedule_occurrence normalmente.
+        assert store.reschedule_occurrence(old_id, next_run_at=2000.0, summary="ok") is True
+        assert store.load_task(old_id).run_at == 2000.0
+    print("test_migrates_old_schema_db_without_recurrence_columns OK")
+
+
+def test_create_task_with_recurrence_params():
+    with _TempDb() as db_path:
+        store = SchedulerStore(db_path)
+        task_id = store.create_task(
+            "veja o preço", "Monitorar preço", run_at=1000.0, created_by="ai",
+            recurrence_seconds=600, notify_on_change_only=True, max_occurrences=3, recurrence_until=5000.0,
+        )
+        task = store.load_task(task_id)
+        assert task.recurrence_seconds == 600
+        assert task.notify_on_change_only == 1
+        assert task.max_occurrences == 3
+        assert task.recurrence_until == 5000.0
+        assert task.occurrence_count == 0
+        assert task.last_result_json is None
+    print("test_create_task_with_recurrence_params OK")
+
+
+def test_reschedule_occurrence_reschedules_and_increments_count():
+    with _TempDb() as db_path:
+        store = SchedulerStore(db_path)
+        task_id = store.create_task("veja o preço", "Monitorar", run_at=1000.0, recurrence_seconds=600)
+        ok = store.reschedule_occurrence(task_id, next_run_at=1600.0, summary="sem mudança", last_result_json='{"price": 450}')
+        assert ok is True
+        task = store.load_task(task_id)
+        assert task.status == scheduler_store.STATUS_PENDING
+        assert task.run_at == 1600.0
+        assert task.occurrence_count == 1
+        assert task.last_result_json == '{"price": 450}'
+    print("test_reschedule_occurrence_reschedules_and_increments_count OK")
+
+
+def test_reschedule_occurrence_terminates_at_max_occurrences():
+    with _TempDb() as db_path:
+        store = SchedulerStore(db_path)
+        task_id = store.create_task("veja 3x", "Monitorar 3x", run_at=1000.0, recurrence_seconds=600, max_occurrences=2)
+        assert store.reschedule_occurrence(task_id, next_run_at=1600.0, summary="1a checagem") is True
+        assert store.load_task(task_id).status == scheduler_store.STATUS_PENDING
+        assert store.reschedule_occurrence(task_id, next_run_at=2200.0, summary="2a checagem, parando") is True
+        task = store.load_task(task_id)
+        assert task.status == scheduler_store.STATUS_DONE, "bateu max_occurrences=2 na 2a ocorrência — deve terminar"
+        assert task.occurrence_count == 2
+        assert task.result_summary == "2a checagem, parando"
+    print("test_reschedule_occurrence_terminates_at_max_occurrences OK")
+
+
+def test_reschedule_occurrence_terminates_past_recurrence_until():
+    with _TempDb() as db_path:
+        store = SchedulerStore(db_path)
+        task_id = store.create_task(
+            "veja até o prazo", "Monitorar com prazo", run_at=1000.0, recurrence_seconds=600, recurrence_until=1500.0,
+        )
+        # next_run_at (1600.0) já passaria do prazo (1500.0) — deve terminar em vez de reagendar.
+        ok = store.reschedule_occurrence(task_id, next_run_at=1600.0, summary="prazo esgotado")
+        assert ok is True
+        assert store.load_task(task_id).status == scheduler_store.STATUS_DONE
+    print("test_reschedule_occurrence_terminates_past_recurrence_until OK")
+
+
+def test_reschedule_occurrence_never_erases_last_result_json_when_omitted():
+    # Regressão: uma ocorrência sem result_data (falha sem done_tool, ou a
+    # IA simplesmente omitiu o campo opcional) não pode apagar o snapshot
+    # válido salvo pela ocorrência anterior — senão a próxima checagem
+    # perde a base de comparação.
+    with _TempDb() as db_path:
+        store = SchedulerStore(db_path)
+        task_id = store.create_task("veja o preço", "Monitorar", run_at=1000.0, recurrence_seconds=600)
+        store.reschedule_occurrence(task_id, next_run_at=1600.0, summary="1a checagem", last_result_json='{"price": 450}')
+        assert store.load_task(task_id).last_result_json == '{"price": 450}'
+
+        # 2a ocorrência sem result_data (ex: falhou antes de chamar done_tool).
+        store.reschedule_occurrence(task_id, next_run_at=2200.0, summary="falhou", success=False)
+        task = store.load_task(task_id)
+        assert task.last_result_json == '{"price": 450}', "não deveria ter sido apagado por um valor omitido"
+        assert task.occurrence_count == 2
+    print("test_reschedule_occurrence_never_erases_last_result_json_when_omitted OK")
+
+
+def test_reschedule_occurrence_termination_respects_success_flag():
+    with _TempDb() as db_path:
+        store = SchedulerStore(db_path)
+        task_id = store.create_task("veja 1x", "Monitorar 1x", run_at=1000.0, recurrence_seconds=600, max_occurrences=1)
+        store.reschedule_occurrence(task_id, next_run_at=1600.0, summary="falhou na última checagem", success=False)
+        task = store.load_task(task_id)
+        assert task.status == scheduler_store.STATUS_FAILED, "última ocorrência falhou — não pode terminar como 'done'"
+        assert task.occurrence_count == 1
+    print("test_reschedule_occurrence_termination_respects_success_flag OK")
+
+
+def test_reschedule_occurrence_noop_on_non_pending_task():
+    with _TempDb() as db_path:
+        store = SchedulerStore(db_path)
+        task_id = store.create_task("x", "X", run_at=1000.0, recurrence_seconds=600)
+        store.cancel_task(task_id)
+        ok = store.reschedule_occurrence(task_id, next_run_at=1600.0, summary="não deveria rodar")
+        assert ok is False
+        assert store.load_task(task_id).status == scheduler_store.STATUS_CANCELLED
+    print("test_reschedule_occurrence_noop_on_non_pending_task OK")
+
+
+def test_get_missed_tasks_excludes_recurring_tasks():
+    with _TempDb() as db_path:
+        store = SchedulerStore(db_path)
+        one_shot = store.create_task("x", "Única", run_at=100.0)
+        recurring = store.create_task("y", "Recorrente", run_at=100.0, recurrence_seconds=600)
+        missed = store.get_missed_tasks(now=1000.0, grace_seconds=60)
+        missed_ids = {t.id for t in missed}
+        assert one_shot in missed_ids
+        assert recurring not in missed_ids, "tarefa recorrente nunca deve entrar na revisão de perdidas"
+    print("test_get_missed_tasks_excludes_recurring_tasks OK")
+
+
 if __name__ == "__main__":
     test_create_and_load_task_roundtrip()
     test_load_missing_task_returns_none()
@@ -163,8 +337,18 @@ if __name__ == "__main__":
     test_get_missed_tasks_requires_grace_period_elapsed()
     test_cancel_task_only_affects_pending()
     test_mark_done_success_and_failure()
+    test_mark_done_never_overwrites_a_cancelled_task()
     test_mark_missed_only_affects_pending()
     test_delete_task()
     test_list_tasks_filters_by_status_and_orders_by_run_at_desc()
     test_schema_creation_is_idempotent()
+    test_migrates_old_schema_db_without_recurrence_columns()
+    test_create_task_with_recurrence_params()
+    test_reschedule_occurrence_reschedules_and_increments_count()
+    test_reschedule_occurrence_terminates_at_max_occurrences()
+    test_reschedule_occurrence_terminates_past_recurrence_until()
+    test_reschedule_occurrence_never_erases_last_result_json_when_omitted()
+    test_reschedule_occurrence_termination_respects_success_flag()
+    test_reschedule_occurrence_noop_on_non_pending_task()
+    test_get_missed_tasks_excludes_recurring_tasks()
     print("\nTODOS OS TESTES PASSARAM")

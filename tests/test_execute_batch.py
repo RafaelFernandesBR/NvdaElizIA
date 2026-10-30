@@ -139,6 +139,82 @@ def test_validation_error_item_aborts_remaining_execute_items():
     print("test_validation_error_item_aborts_remaining_execute_items OK")
 
 
+def test_should_cancel_aborts_before_executing_the_item():
+    AP._last_actions = []
+    items = [
+        BatchItem("click_tool", None, "execute", action_info=FakeActionInfo("click(1,1)")),
+        BatchItem("type_tool", None, "execute", action_info=FakeActionInfo("type")),
+    ]
+    executed = []
+
+    def execute_fn(action_info):
+        executed.append(action_info.signature())
+        return True, None
+
+    loop_broken = AP.run_batch(
+        items, h("h0"), execute_fn, make_capture_fn(["h0"]), should_cancel=lambda: True,
+    )
+    assert loop_broken is False
+    assert executed == [], "nenhuma ação física deveria rodar depois do cancelamento pedido"
+    assert items[0].response["success"] is False
+    assert "Skipped" in items[0].response["error"]
+    assert items[1].response["success"] is False
+    print("test_should_cancel_aborts_before_executing_the_item OK")
+
+
+def test_should_cancel_mid_batch_lets_earlier_items_through():
+    AP._last_actions = []
+    items = [
+        BatchItem("click_tool", None, "execute", action_info=FakeActionInfo("click(1,1)")),
+        BatchItem("type_tool", None, "execute", action_info=FakeActionInfo("type")),
+    ]
+    calls = {"n": 0}
+
+    def should_cancel():
+        # Só pede cancelamento a partir do 2º item — o 1º já tinha sido
+        # disparado antes do usuário apertar NVDA+Shift+C.
+        calls["n"] += 1
+        return calls["n"] > 1
+
+    loop_broken = AP.run_batch(
+        items, h("h0"), make_execute_fn([(True, None)]), make_capture_fn(["h0"]), should_cancel=should_cancel,
+    )
+    assert loop_broken is False
+    assert items[0].response["success"] is True
+    assert items[1].response["success"] is False
+    assert "Skipped" in items[1].response["error"]
+    print("test_should_cancel_mid_batch_lets_earlier_items_through OK")
+
+
+def test_support_and_skip_items_ignore_should_cancel():
+    # record_note_tool/schedule_task_tool (kind="support") e itens já
+    # resolvidos (kind="skip") nunca tocam a tela — should_cancel nem
+    # deveria ser consultado pra eles.
+    AP._last_actions = []
+    support_item = BatchItem("record_note_tool", None, "support", response={"success": True})
+    skip_item = BatchItem("click_tool", None, "skip", {"success": False, "error": "parâmetro inválido"})
+    items = [support_item, skip_item]
+
+    loop_broken = AP.run_batch(
+        items, h("h0"), lambda action_info: (True, None), lambda: "h0", should_cancel=lambda: True,
+    )
+    assert loop_broken is False
+    assert support_item.response == {"success": True}
+    assert skip_item.response == {"success": False, "error": "parâmetro inválido"}
+    print("test_support_and_skip_items_ignore_should_cancel OK")
+
+
+def test_run_batch_without_should_cancel_behaves_as_before():
+    # Default (nenhum should_cancel passado) nunca cancela — mesmo
+    # comportamento de antes desse parâmetro existir.
+    AP._last_actions = []
+    items = [BatchItem("click_tool", None, "execute", action_info=FakeActionInfo("click(1,1)"))]
+    loop_broken = AP.run_batch(items, h("h0"), make_execute_fn([(True, None)]), make_capture_fn(["h1"]))
+    assert loop_broken is False
+    assert items[0].response["success"] is True
+    print("test_run_batch_without_should_cancel_behaves_as_before OK")
+
+
 def test_truncated_item_does_not_abort_anything():
     AP._last_actions = []
     exec_item = BatchItem("keyboard_tool", None, "execute", action_info=FakeActionInfo("keyboard:enter"))
@@ -159,5 +235,9 @@ if __name__ == "__main__":
     test_screen_unchanged_and_success_does_not_abort()
     test_circuit_breaker_stops_mid_batch()
     test_validation_error_item_aborts_remaining_execute_items()
+    test_should_cancel_aborts_before_executing_the_item()
+    test_should_cancel_mid_batch_lets_earlier_items_through()
+    test_support_and_skip_items_ignore_should_cancel()
+    test_run_batch_without_should_cancel_behaves_as_before()
     test_truncated_item_does_not_abort_anything()
     print("\nTODOS OS TESTES PASSARAM")

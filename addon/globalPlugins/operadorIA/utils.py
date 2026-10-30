@@ -188,6 +188,11 @@ class ConversationHistory:
         # confundir com _log_entries: aquele é o resumo técnico de ações
         # pra IA, nunca deveria aparecer na tela.
         self._conversation_log = []
+        # Fatos anotados via record_note_tool — ao contrário de
+        # _log_entries, NUNCA janelado: sempre enviado por completo em
+        # notes_text(), justamente pra sobreviver em tarefas com mais
+        # turnos do que MAX_HISTORY_LOG_ITEMS (ver ARCHITECTURE.md).
+        self._notes = []
 
     def set_task_text(self, text):
         """
@@ -215,6 +220,30 @@ class ConversationHistory:
         else:
             line = "; ".join(_summarize_batch_item(item) for item in items)
         self._log_entries.append(f"{turn_number}. {line}")
+
+    def record_note(self, note):
+        """
+        Fato anotado pela IA via record_note_tool — ver docstring de
+        __init__: nunca sai do contexto enviado à API, mesmo quando o log
+        textual janelado já descartou o turno em que foi anotado.
+
+        Returns:
+            bool — True se a nota foi aceita; False se `note` é vazio ou o
+            teto addon_config.MAX_NOTES já foi atingido (chamador deve
+            devolver um erro explícito à IA, nunca aceitar silenciosamente
+            além do teto — ver GlobalPlugin._handle_record_note_tool).
+        """
+        if not note or len(self._notes) >= addon_config.MAX_NOTES:
+            return False
+        self._notes.append(note)
+        return True
+
+    def notes_text(self):
+        """Texto com todas as notas registradas até agora, ou "" se nenhuma."""
+        if not self._notes:
+            return ""
+        lines = [f"- {note}" for note in self._notes]
+        return "📌 NOTAS IMPORTANTES (registradas com record_note_tool):\n" + "\n".join(lines)
 
     def record_conversation_message(self, sender, message):
         """
@@ -289,6 +318,9 @@ class ConversationHistory:
         log_text = self.history_log_text()
         if log_text:
             lead_parts.append(types.Part(text=log_text))
+        notes_text = self.notes_text()
+        if notes_text:
+            lead_parts.append(types.Part(text=notes_text))
 
         if self._last_model_content is None:
             return [types.Content(role="user", parts=lead_parts + list(current_user_parts))]
@@ -301,15 +333,16 @@ class ConversationHistory:
         return messages
 
     def clear(self):
-        """Zera a tarefa, o log, o último turno do modelo e a transcrição."""
+        """Zera a tarefa, o log, o último turno do modelo, a transcrição e as notas."""
         self._task_text = None
         self._log_entries = []
         self._last_model_content = None
         self._conversation_log = []
+        self._notes = []
 
     def to_dict(self):
         """
-        Serializa os 4 campos pra persistência (ver session_store.py).
+        Serializa os 5 campos pra persistência (ver session_store.py).
         `_last_model_content` vira dict puro via model_dump(mode="json") —
         é um types.Content (pydantic) do SDK google-genai, suporta isso
         nativamente, sem encoder customizado.
@@ -322,6 +355,7 @@ class ConversationHistory:
                 if self._last_model_content is not None else None
             ),
             "conversation_log": list(self._conversation_log),
+            "notes": list(self._notes),
         }
 
     @classmethod
@@ -331,8 +365,8 @@ class ConversationHistory:
         revalidado via types.Content.model_validate() — nunca montado à
         mão — pelo mesmo motivo documentado em set_last_model_content:
         thought_signature precisa sobreviver ao round-trip inalterado.
-        `conversation_log` ausente (sessão antiga, ou dict de teste sem essa
-        chave) cai em lista vazia, sem lançar.
+        `conversation_log`/`notes` ausentes (sessão antiga, ou dict de teste
+        sem essas chaves) caem em lista vazia, sem lançar.
         """
         instance = cls()
         instance._task_text = data.get("task_text") or None
@@ -342,4 +376,5 @@ class ConversationHistory:
             types.Content.model_validate(raw_model_content) if raw_model_content else None
         )
         instance._conversation_log = list(data.get("conversation_log") or [])
+        instance._notes = list(data.get("notes") or [])
         return instance

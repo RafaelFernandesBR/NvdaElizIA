@@ -30,7 +30,7 @@ SessionRecord = namedtuple(
     "SessionRecord",
     [
         "id", "title", "created_at", "updated_at", "turn_count", "task_text", "log_entries",
-        "last_model_content", "conversation_log",
+        "last_model_content", "conversation_log", "notes",
     ],
 )
 
@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     task_text TEXT NOT NULL DEFAULT '',
     log_entries_json TEXT NOT NULL DEFAULT '[]',
     last_model_content_json TEXT,
-    conversation_log_json TEXT NOT NULL DEFAULT '[]'
+    conversation_log_json TEXT NOT NULL DEFAULT '[]',
+    notes_json TEXT NOT NULL DEFAULT '[]'
 )
 """
 
@@ -93,13 +94,18 @@ class SessionStore:
                 conn.execute(
                     "ALTER TABLE sessions ADD COLUMN conversation_log_json TEXT NOT NULL DEFAULT '[]'"
                 )
+            if "notes_json" not in existing_cols:
+                conn.execute(
+                    "ALTER TABLE sessions ADD COLUMN notes_json TEXT NOT NULL DEFAULT '[]'"
+                )
 
     def create_session(self, title, max_sessions=None):
         now = time.time()
         with self._connect() as conn:
             cursor = conn.execute(
-                "INSERT INTO sessions (title, created_at, updated_at, turn_count, task_text, log_entries_json, last_model_content_json, conversation_log_json) "
-                "VALUES (?, ?, ?, 0, '', '[]', NULL, '[]')",
+                "INSERT INTO sessions (title, created_at, updated_at, turn_count, task_text, log_entries_json, "
+                "last_model_content_json, conversation_log_json, notes_json) "
+                "VALUES (?, ?, ?, 0, '', '[]', NULL, '[]', '[]')",
                 (title, now, now),
             )
             session_id = cursor.lastrowid
@@ -107,17 +113,18 @@ class SessionStore:
             self._prune(max_sessions)
         return session_id
 
-    def update_session(self, session_id, task_text, log_entries, last_model_content, conversation_log=None):
+    def update_session(self, session_id, task_text, log_entries, last_model_content, conversation_log=None, notes=None):
         log_entries_json = json.dumps(list(log_entries or []))
         last_model_content_json = json.dumps(last_model_content) if last_model_content is not None else None
         conversation_log_json = json.dumps(list(conversation_log or []))
+        notes_json = json.dumps(list(notes or []))
         with self._connect() as conn:
             cursor = conn.execute(
                 "UPDATE sessions SET task_text = ?, log_entries_json = ?, last_model_content_json = ?, "
-                "conversation_log_json = ?, turn_count = ?, updated_at = ? WHERE id = ?",
+                "conversation_log_json = ?, notes_json = ?, turn_count = ?, updated_at = ? WHERE id = ?",
                 (
                     task_text or "", log_entries_json, last_model_content_json, conversation_log_json,
-                    len(log_entries or []), time.time(), session_id,
+                    notes_json, len(log_entries or []), time.time(), session_id,
                 ),
             )
             return cursor.rowcount > 0
@@ -133,14 +140,14 @@ class SessionStore:
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT id, title, created_at, updated_at, turn_count, task_text, log_entries_json, "
-                "last_model_content_json, conversation_log_json FROM sessions WHERE id = ?",
+                "last_model_content_json, conversation_log_json, notes_json FROM sessions WHERE id = ?",
                 (session_id,),
             ).fetchone()
         if row is None:
             return None
         (
             id_, title, created_at, updated_at, turn_count, task_text, log_entries_json,
-            last_model_content_json, conversation_log_json,
+            last_model_content_json, conversation_log_json, notes_json,
         ) = row
         return SessionRecord(
             id=id_,
@@ -152,6 +159,7 @@ class SessionStore:
             log_entries=json.loads(log_entries_json),
             last_model_content=json.loads(last_model_content_json) if last_model_content_json is not None else None,
             conversation_log=json.loads(conversation_log_json),
+            notes=json.loads(notes_json),
         )
 
     def rename_session(self, session_id, new_title):

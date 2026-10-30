@@ -196,6 +196,96 @@ def test_to_dict_from_dict_roundtrip_preserves_thought_signature():
     print("test_to_dict_from_dict_roundtrip_preserves_thought_signature OK")
 
 
+def test_record_note_never_windowed_unlike_log_entries():
+    ch = utils.ConversationHistory()
+    ch.set_task_text("Tarefa: pesquisa longa")
+    ch.record_note("Site X: passagem SP-RJ 15/11 por R$450")
+    for turn in range(1, 15):
+        ch.record_step(make_batch(turn))
+    log_text = ch.history_log_text()
+    # Com 14 turnos e janela de 8 itens (1º + omitido + últimos 7), o meio
+    # (turnos 2-7) é descartado — turno 6 é um exemplo que certamente caiu
+    # fora da janela (ver test_history_log_windowed_keeps_first_and_last).
+    # "6." não aparece como sufixo de nenhum turno mantido (1, 8-14), ao
+    # contrário de "4."/"3."/"2." (substring de "14."/"13."/"12.").
+    assert "6. click" not in log_text
+    assert "omitido" in log_text
+    # A nota, ao contrário, nunca é janelada — sobrevive independente disso.
+    assert "R$450" in ch.notes_text()
+    print("test_record_note_never_windowed_unlike_log_entries OK")
+
+
+def test_notes_included_in_messages_without_exceeding_bounded_payload():
+    ch = utils.ConversationHistory()
+    ch.set_task_text("Tarefa: R")
+    ch.record_note("fato 1")
+    ch.record_note("fato 2")
+    msgs = ch.build_messages_for_api([gt.Part(text="screenshot")])
+    assert len(msgs) == 1 and msgs[0].role == "user"
+    joined_text = "\n".join(p.text for p in msgs[0].parts if p.text)
+    assert "fato 1" in joined_text and "fato 2" in joined_text
+    print("test_notes_included_in_messages_without_exceeding_bounded_payload OK")
+
+
+def test_record_note_rejects_beyond_max_notes_cap():
+    ch = utils.ConversationHistory()
+    for i in range(addon_config.MAX_NOTES):
+        assert ch.record_note(f"fato {i}") is True
+    # O teto existe justamente porque record_note_tool é kind="support" e
+    # nunca passa pelo circuit breaker de loop (is_loop_detected só vê
+    # ações físicas) — sem ele, nada impediria a lista de crescer sem fim.
+    assert ch.record_note("fato excedente") is False
+    assert len(ch._notes) == addon_config.MAX_NOTES
+    print("test_record_note_rejects_beyond_max_notes_cap OK")
+
+
+def test_record_note_rejects_empty_note():
+    ch = utils.ConversationHistory()
+    assert ch.record_note("") is False
+    assert ch.record_note(None) is False
+    assert ch.notes_text() == ""
+    print("test_record_note_rejects_empty_note OK")
+
+
+def test_notes_text_empty_when_no_notes_recorded():
+    ch = utils.ConversationHistory()
+    assert ch.notes_text() == ""
+    print("test_notes_text_empty_when_no_notes_recorded OK")
+
+
+def test_clear_resets_notes_too():
+    ch = utils.ConversationHistory()
+    ch.record_note("fato temporário")
+    ch.clear()
+    assert ch.notes_text() == ""
+    print("test_clear_resets_notes_too OK")
+
+
+def test_to_dict_from_dict_roundtrip_notes():
+    ch = utils.ConversationHistory()
+    ch.set_task_text("Tarefa: S")
+    ch.record_note("fato A")
+    ch.record_note("fato B")
+
+    data = ch.to_dict()
+    assert data["notes"] == ["fato A", "fato B"]
+
+    restored = utils.ConversationHistory.from_dict(data)
+    assert restored.notes_text() == ch.notes_text()
+    print("test_to_dict_from_dict_roundtrip_notes OK")
+
+
+def test_from_dict_without_notes_key_defaults_to_empty():
+    # Simula sessão salva antes do suporte a record_note_tool existir.
+    restored = utils.ConversationHistory.from_dict({
+        "task_text": "Tarefa: antiga",
+        "log_entries": ["1. click -> ok, tela mudou"],
+        "last_model_content": None,
+    })
+    assert restored.notes_text() == ""
+    print("test_from_dict_without_notes_key_defaults_to_empty OK")
+
+
 def test_from_dict_then_build_messages_for_api_behaves_like_live_history():
     live = utils.ConversationHistory()
     live.set_task_text("Tarefa: T")
@@ -226,4 +316,12 @@ if __name__ == "__main__":
     test_record_conversation_message_and_conversation_log()
     test_to_dict_from_dict_roundtrip_conversation_log()
     test_from_dict_without_conversation_log_key_defaults_to_empty()
+    test_record_note_never_windowed_unlike_log_entries()
+    test_notes_included_in_messages_without_exceeding_bounded_payload()
+    test_record_note_rejects_beyond_max_notes_cap()
+    test_record_note_rejects_empty_note()
+    test_notes_text_empty_when_no_notes_recorded()
+    test_clear_resets_notes_too()
+    test_to_dict_from_dict_roundtrip_notes()
+    test_from_dict_without_notes_key_defaults_to_empty()
     print("\nTODOS OS TESTES PASSARAM")
